@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { SystemSettings, ImageCacheStats } from '@/types';
+import type { SystemSettings, ImageCacheStats, LLMProvider } from '@/types';
 import { tauriApi } from '@/lib/tauri';
 
 const DEFAULT_SETTINGS: SystemSettings = {
   theme: 'system',
   autoCopyResult: false,
   closeWindowOnCopy: false,
-  defaultProviderId: '',
+  defaultProviderId: 'openai',
   providers: [
     {
       id: 'openai',
@@ -96,6 +96,93 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  async function addProvider(provider: LLMProvider) {
+    settings.value.providers.push(provider);
+    await updateSettings({ providers: settings.value.providers });
+  }
+
+  async function removeProvider(providerId: string) {
+    settings.value.providers = settings.value.providers.filter((p) => p.id !== providerId);
+    if (settings.value.defaultProviderId === providerId) {
+      settings.value.defaultProviderId = settings.value.providers[0]?.id || '';
+    }
+    await updateSettings({
+      providers: settings.value.providers,
+      defaultProviderId: settings.value.defaultProviderId,
+    });
+  }
+
+  async function testProviderConnection(
+    provider: LLMProvider
+  ): Promise<{ success: boolean; latencyMs?: number; message: string }> {
+    let url = provider.baseUrl.trim();
+    if (url.endsWith('/')) {
+      url = url.slice(0, -1);
+    }
+    // Test endpoint: /models
+    const testUrl = url.endsWith('/models') ? url : `${url}/models`;
+    const startTime = Date.now();
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (provider.apiKey) {
+        headers['Authorization'] = `Bearer ${provider.apiKey}`;
+      }
+
+      const res = await fetch(testUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const latencyMs = Date.now() - startTime;
+
+      if (res.ok) {
+        return {
+          success: true,
+          latencyMs,
+          message: `连接成功 (延迟: ${latencyMs}ms)`,
+        };
+      }
+
+      // If /models returned 404 or 405, server exists but endpoint differed
+      if (res.status === 404 || res.status === 405) {
+        return {
+          success: true,
+          latencyMs,
+          message: `服务可达 (${res.status})，但未开放 /models 索引，基础连接正常`,
+        };
+      }
+
+      const errText = await res.text();
+      return {
+        success: false,
+        latencyMs,
+        message: `HTTP ${res.status}: ${errText.slice(0, 100)}`,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      if (err.name === 'AbortError') {
+        return {
+          success: false,
+          latencyMs,
+          message: '连接超时 (超过 6 秒未响应)',
+        };
+      }
+      return {
+        success: false,
+        latencyMs,
+        message: `连接失败: ${err?.message || err}`,
+      };
+    }
+  }
+
   async function fetchCacheStats() {
     try {
       const stats = await tauriApi.getImageCacheStats();
@@ -128,8 +215,10 @@ export const useSettingsStore = defineStore('settings', () => {
     loadSettings,
     updateSettings,
     applyTheme,
+    addProvider,
+    removeProvider,
+    testProviderConnection,
     fetchCacheStats,
     cleanupCache,
   };
 });
-

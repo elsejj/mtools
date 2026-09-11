@@ -18,6 +18,7 @@ import BottomActionBar from '@/components/workspace/BottomActionBar.vue';
 import HistoryDrawer from '@/components/history/HistoryDrawer.vue';
 import SettingsModal from '@/components/settings/SettingsModal.vue';
 import ToolEditDialog from '@/components/tools/ToolEditDialog.vue';
+import ToolManagerModal from '@/components/tools/ToolManagerModal.vue';
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ useWindowState();
 const showHistory = ref(false);
 const showSettings = ref(false);
 const showToolEditor = ref(false);
+const showToolManager = ref(false);
 const manualInputText = ref('');
 
 // Auto-select best tool when new payload is emitted
@@ -81,9 +83,10 @@ useShortcuts({
     }
   },
   onEscape: () => {
-    if (showHistory.value) showHistory.value = false;
+    if (showToolEditor.value) showToolEditor.value = false;
+    else if (showToolManager.value) showToolManager.value = false;
+    else if (showHistory.value) showHistory.value = false;
     else if (showSettings.value) showSettings.value = false;
-    else if (showToolEditor.value) showToolEditor.value = false;
   },
 });
 
@@ -116,7 +119,10 @@ onUnmounted(() => {
     <!-- 2. Main Body: Sidebar + Dual Workspace -->
     <div class="flex flex-1 overflow-hidden">
       <!-- Left Tool Sidebar -->
-      <ToolSidebar @open-tool-editor="showToolEditor = true" />
+      <ToolSidebar
+        @open-tool-editor="() => { toolStore.setEditingTool(null); showToolEditor = true; }"
+        @open-tool-manager="showToolManager = true"
+      />
 
       <!-- Center Dual-Column Workspace -->
       <main class="flex-1 flex flex-col overflow-hidden">
@@ -149,5 +155,10 @@ onUnmounted(() => {
     <HistoryDrawer v-if="showHistory" @close="showHistory = false" />
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
     <ToolEditDialog v-if="showToolEditor" @close="showToolEditor = false" />
+    <ToolManagerModal
+      v-if="showToolManager"
+      @close="showToolManager = false"
+      @open-create="() => { showToolManager = false; showToolEditor = true; }"
+    />
   </div>
 </template>

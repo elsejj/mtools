@@ -168,9 +168,75 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
   },
 ];
 
+/**
+ * 实时计算工具匹配得分 (0 ~ 100)
+ */
+export function calculateToolMatchScore(
+  tool: ToolDefinition,
+  sample: string,
+  sampleType: 'text' | 'image'
+): number {
+  if (!tool.matcher.acceptedTypes.includes(sampleType)) {
+    return 0;
+  }
+  let score = tool.matcher.basePriority || 10;
+  const content = sample.trim();
+
+  // Pattern matching
+  if (tool.matcher.patterns && tool.matcher.patterns.length > 0) {
+    let matchedPattern = false;
+    for (const pat of tool.matcher.patterns) {
+      try {
+        const reg = new RegExp(pat);
+        if (reg.test(content)) {
+          matchedPattern = true;
+          score += 20;
+          break;
+        }
+      } catch {}
+    }
+    if (!matchedPattern && tool.matcher.patterns.length > 0) {
+      score -= 10;
+    }
+  }
+
+  // Format checks
+  if (tool.matcher.requiredFormats && tool.matcher.requiredFormats.length > 0) {
+    for (const fmt of tool.matcher.requiredFormats) {
+      if (fmt === 'json') {
+        if (
+          (content.startsWith('{') && content.endsWith('}')) ||
+          (content.startsWith('[') && content.endsWith(']'))
+        ) {
+          try {
+            JSON.parse(content);
+            score += 25;
+          } catch {}
+        }
+      } else if (fmt === 'url') {
+        if (content.startsWith('http://') || content.startsWith('https://') || content.includes('?')) {
+          score += 20;
+        }
+      } else if (fmt === 'jwt') {
+        if (content.split('.').length === 3) {
+          score += 25;
+        }
+      } else if (fmt === 'time') {
+        const num = Number(content);
+        if (!isNaN(num) && (content.length === 10 || content.length === 13)) {
+          score += 20;
+        }
+      }
+    }
+  }
+
+  return Math.min(Math.max(score, 0), 100);
+}
+
 export const useToolStore = defineStore('tools', () => {
   const tools = ref<ToolDefinition[]>(DEFAULT_TOOLS);
   const activeToolId = ref<string>('json-formatter');
+  const editingTool = ref<ToolDefinition | null>(null);
   const isExecuting = ref<boolean>(false);
   const isStreaming = ref<boolean>(false);
   const executionError = ref<string | null>(null);
@@ -265,6 +331,63 @@ export const useToolStore = defineStore('tools', () => {
     }
   }
 
+  async function toggleToolEnabled(toolId: string) {
+    const tool = tools.value.find((t) => t.id === toolId);
+    if (tool) {
+      tool.enabled = !tool.enabled;
+      await saveTool(tool);
+    }
+  }
+
+  async function reorderTool(toolId: string, direction: 'up' | 'down') {
+    const idx = tools.value.findIndex((t) => t.id === toolId);
+    if (idx < 0) return;
+
+    if (direction === 'up' && idx > 0) {
+      const temp = tools.value[idx];
+      tools.value[idx] = tools.value[idx - 1];
+      tools.value[idx - 1] = temp;
+    } else if (direction === 'down' && idx < tools.value.length - 1) {
+      const temp = tools.value[idx];
+      tools.value[idx] = tools.value[idx + 1];
+      tools.value[idx + 1] = temp;
+    }
+
+    // Re-index sortOrder
+    for (let i = 0; i < tools.value.length; i++) {
+      tools.value[i].sortOrder = i + 1;
+      await tauriApi.saveToolConfig(tools.value[i]);
+    }
+  }
+
+  function exportToolsToJson(): string {
+    return JSON.stringify(tools.value, null, 2);
+  }
+
+  async function importToolsFromJson(jsonStr: string): Promise<{ count: number; error?: string }> {
+    try {
+      const list = JSON.parse(jsonStr);
+      if (!Array.isArray(list)) {
+        return { count: 0, error: '导入的 JSON 必须是工具数组' };
+      }
+
+      let count = 0;
+      for (const item of list) {
+        if (item.id && item.name && item.type) {
+          await saveTool(item);
+          count++;
+        }
+      }
+      return { count };
+    } catch (e: any) {
+      return { count: 0, error: e?.message || String(e) };
+    }
+  }
+
+  function setEditingTool(tool: ToolDefinition | null) {
+    editingTool.value = tool;
+  }
+
   function setActiveTool(toolId: string) {
     const target = tools.value.find((t) => t.id === toolId);
     if (target) {
@@ -296,7 +419,6 @@ export const useToolStore = defineStore('tools', () => {
     isStreaming.value = false;
   }
 
-  // Trigger post-actions like copy or save to file
   async function handlePostAction(
     postAction: PostActionConfig,
     content: string,
@@ -332,7 +454,6 @@ export const useToolStore = defineStore('tools', () => {
     return result;
   }
 
-  // Dispatch execution across Code, LLM, and CLI engines
   async function executeTool(payload: EnrichedPayload): Promise<string> {
     const tool = activeTool.value;
     if (!tool) return '';
@@ -349,11 +470,9 @@ export const useToolStore = defineStore('tools', () => {
       let output = '';
 
       if (tool.type === 'code') {
-        // 1. Code Engine Execution
         output = executeCodeTool(tool.id, payload.actualContent, payload.preprocessedResult);
         executionOutput.value = output;
       } else if (tool.type === 'cli' && tool.cliConfig) {
-        // 2. CLI Engine Execution
         const cliRes: CliExecuteResponse = await tauriApi.executeCliCommand({
           command: tool.cliConfig.command,
           args: tool.cliConfig.args || [],
@@ -368,7 +487,6 @@ export const useToolStore = defineStore('tools', () => {
         }
         executionOutput.value = output;
       } else if (tool.type === 'llm') {
-        // 3. LLM Engine Streaming Execution
         const settingsStore = useSettingsStore();
         activeAbortController = new AbortController();
         isStreaming.value = true;
@@ -384,10 +502,8 @@ export const useToolStore = defineStore('tools', () => {
         });
       }
 
-      // Handle Post-Action
       const postActionResult = await handlePostAction(tool.postAction, output, tool.name);
 
-      // Record in history
       const durationMs = Date.now() - startTime;
       await tauriApi.addHistoryRecord({
         toolId: tool.id,
@@ -419,6 +535,7 @@ export const useToolStore = defineStore('tools', () => {
     // State
     tools,
     activeToolId,
+    editingTool,
     isExecuting,
     isStreaming,
     executionError,
@@ -434,6 +551,11 @@ export const useToolStore = defineStore('tools', () => {
     loadTools,
     saveTool,
     deleteTool,
+    toggleToolEnabled,
+    reorderTool,
+    exportToolsToJson,
+    importToolsFromJson,
+    setEditingTool,
     setActiveTool,
     autoSelectBestTool,
     stopExecution,

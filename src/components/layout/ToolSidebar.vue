@@ -18,6 +18,7 @@ import {
 
 const emit = defineEmits<{
   (e: 'openToolEditor'): void;
+  (e: 'openToolManager'): void;
 }>();
 
 const toolStore = useToolStore();
@@ -127,17 +128,28 @@ async function handleReadClipboard() {
       </div>
     </div>
 
-    <!-- Bottom Actions: Add Custom Tool & Read Clipboard -->
+    <!-- Bottom Actions: Add Custom Tool, Manage Tools, Read Clipboard -->
     <div class="p-2 border-t border-border space-y-1.5 bg-background/50">
-      <Button
-        variant="outline"
-        size="sm"
-        class="w-full text-xs h-7 justify-center"
-        @click="emit('openToolEditor')"
-      >
-        <IconPlus class="h-3.5 w-3.5 mr-1" />
-        自定义工具
-      </Button>
+      <div class="grid grid-cols-2 gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          class="text-xs h-7 justify-center px-1"
+          @click="emit('openToolEditor')"
+        >
+          <IconPlus class="h-3 w-3 mr-1" />
+          新建工具
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="text-xs h-7 justify-center px-1"
+          @click="emit('openToolManager')"
+        >
+          <IconCategory class="h-3 w-3 mr-1" />
+          管理工具
+        </Button>
+      </div>
       <Button
         variant="ghost"
         size="sm"
