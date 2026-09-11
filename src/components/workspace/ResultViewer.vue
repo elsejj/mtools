@@ -12,13 +12,18 @@ import {
   IconFolder,
   IconLoader2,
   IconSparkles,
+  IconPlayerStop,
+  IconMinimize,
+  IconMaximize,
 } from '@tabler/icons-vue';
 import { tauriApi } from '@/lib/tauri';
+import { formatJson } from '@/lib/engines/codeEngine';
 
 const toolStore = useToolStore();
 const payloadStore = usePayloadStore();
 
 const copied = ref(false);
+const isMinified = ref(false);
 
 const outputLanguage = computed(() => {
   if (toolStore.activeTool?.type === 'cli') return 'bash';
@@ -31,10 +36,22 @@ const outputLanguage = computed(() => {
   return 'markdown';
 });
 
+const displayedOutput = computed(() => {
+  if (toolStore.activeTool?.id === 'json-formatter' && isMinified.value) {
+    try {
+      return formatJson(toolStore.executionOutput, true);
+    } catch {
+      return toolStore.executionOutput;
+    }
+  }
+  return toolStore.executionOutput;
+});
+
 async function copyOutput() {
-  if (!toolStore.executionOutput) return;
+  const text = displayedOutput.value;
+  if (!text) return;
   try {
-    await navigator.clipboard.writeText(toolStore.executionOutput);
+    await navigator.clipboard.writeText(text);
     copied.value = true;
     setTimeout(() => {
       copied.value = false;
@@ -46,6 +63,10 @@ async function copyOutput() {
 
 function openFolder(path: string) {
   tauriApi.showInFolder(path);
+}
+
+function toggleJsonMinify() {
+  isMinified.value = !isMinified.value;
 }
 </script>
 
@@ -66,6 +87,33 @@ function openFolder(path: string) {
       </div>
 
       <div class="flex items-center space-x-1.5">
+        <!-- JSON Minify Toggle -->
+        <Button
+          v-if="toolStore.activeTool?.id === 'json-formatter' && toolStore.executionOutput"
+          variant="ghost"
+          size="sm"
+          class="h-6 px-1.5 text-xs cursor-pointer hover:bg-muted"
+          @click="toggleJsonMinify"
+          :title="isMinified ? '还原格式化' : '紧凑压缩'"
+        >
+          <IconMaximize v-if="isMinified" class="h-3.5 w-3.5 mr-1" />
+          <IconMinimize v-else class="h-3.5 w-3.5 mr-1" />
+          <span>{{ isMinified ? '格式化' : '压缩' }}</span>
+        </Button>
+
+        <!-- Stop Generating button for LLM Streaming -->
+        <Button
+          v-if="toolStore.isStreaming"
+          variant="destructive"
+          size="sm"
+          class="h-6 px-2 text-xs cursor-pointer shadow-2xs"
+          @click="toolStore.stopExecution"
+        >
+          <IconPlayerStop class="h-3 w-3 mr-1 fill-current" />
+          <span>停止生成</span>
+        </Button>
+
+        <!-- Copy Output button -->
         <Button
           variant="ghost"
           size="sm"
@@ -82,9 +130,9 @@ function openFolder(path: string) {
 
     <!-- Main Content -->
     <div class="flex-1 overflow-hidden relative">
-      <!-- Loading overlay -->
+      <!-- Loading overlay (only when executing non-streamed) -->
       <div
-        v-if="toolStore.isExecuting"
+        v-if="toolStore.isExecuting && !toolStore.isStreaming"
         class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/70 backdrop-blur-2xs text-xs text-muted-foreground"
       >
         <IconLoader2 class="h-6 w-6 animate-spin text-primary mb-2" />
@@ -103,11 +151,15 @@ function openFolder(path: string) {
         <pre class="font-mono whitespace-pre-wrap break-all rounded border border-destructive/20 bg-destructive/10 p-3">{{ toolStore.executionError }}</pre>
       </div>
 
-      <!-- Output Display -->
-      <div v-else-if="toolStore.executionOutput" class="h-full">
+      <!-- Output Display (includes streaming text) -->
+      <div v-else-if="toolStore.executionOutput" class="h-full relative">
         <CodeHighlight
-          :code="toolStore.executionOutput"
+          :code="displayedOutput"
           :language="outputLanguage"
+        />
+        <span
+          v-if="toolStore.isStreaming"
+          class="inline-block h-3.5 w-1.5 bg-primary animate-pulse ml-1 align-middle"
         />
       </div>
 
@@ -142,4 +194,3 @@ function openFolder(path: string) {
     </div>
   </div>
 </template>
-

@@ -9,6 +9,9 @@ import type {
   SaveFileResponse,
 } from '@/types';
 import { tauriApi } from '@/lib/tauri';
+import { executeCodeTool } from '@/lib/engines/codeEngine';
+import { streamLLMCompletion } from '@/lib/engines/llmEngine';
+import { useSettingsStore } from './settings';
 
 export const DEFAULT_TOOLS: ToolDefinition[] = [
   {
@@ -71,7 +74,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     postAction: { type: 'none' },
     codeConfig: {
       script: '',
-      outputType: 'text',
+      outputType: 'json',
     },
   },
   {
@@ -96,36 +99,60 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     },
   },
   {
-    id: 'llm-assistant',
-    name: 'AI 助手',
-    icon: 'IconSparkles',
-    description: '智能文本分析、翻译或图像多模态处理',
+    id: 'ocr-extractor',
+    name: 'OCR 识图提取',
+    icon: 'IconScan',
+    description: '多模态 AI 识别并提取图片中的所有排版文字',
     category: 'ai',
     isCustom: false,
     enabled: true,
     sortOrder: 5,
     matcher: {
-      acceptedTypes: ['text', 'image'],
-      basePriority: 50,
+      acceptedTypes: ['image'],
+      basePriority: 95,
+    },
+    type: 'llm',
+    postAction: { type: 'copy_to_clipboard' },
+    llmConfig: {
+      useSystemProvider: true,
+      systemPrompt: '请精准提取图片中的所有文字，忠实保留原始分段与排版格式，直接输出文字，无需寒暄。',
+      userPromptTemplate: '请提取该图片中的全部文字内容：',
+      stream: true,
+      temperature: 0.1,
+    },
+  },
+  {
+    id: 'llm-translate',
+    name: 'AI 翻译与润色',
+    icon: 'IconLanguage',
+    description: '中英双语即时翻译与文案表达润色',
+    category: 'ai',
+    isCustom: false,
+    enabled: true,
+    sortOrder: 6,
+    matcher: {
+      acceptedTypes: ['text'],
+      basePriority: 45,
     },
     type: 'llm',
     postAction: { type: 'none' },
     llmConfig: {
       useSystemProvider: true,
-      systemPrompt: '你是一个高效精准的个人桌面生产力助手。请直接输出分析或处理结果，保持严谨简洁。',
+      systemPrompt: '你是一位精通多语言翻译与专业文案润色的大师。若用户输入中文，请翻译为地道流利的英文；若输入为其他语言，请翻译为通顺规范的中文。直接输出翻译结果。',
       userPromptTemplate: '{{input}}',
       stream: true,
+      temperature: 0.3,
     },
   },
   {
     id: 'cli-runner',
     name: '外部 CLI',
     icon: 'IconTerminal2',
-    description: '通过管道将输入数据传递给本地可执行程序',
+    description: '通过管道将输入数据传递给本地命令行工具 (如 jq/cat)',
     category: 'utilities',
     isCustom: false,
     enabled: true,
-    sortOrder: 6,
+    sortOrder: 7,
     matcher: {
       acceptedTypes: ['text'],
       basePriority: 20,
@@ -145,9 +172,12 @@ export const useToolStore = defineStore('tools', () => {
   const tools = ref<ToolDefinition[]>(DEFAULT_TOOLS);
   const activeToolId = ref<string>('json-formatter');
   const isExecuting = ref<boolean>(false);
+  const isStreaming = ref<boolean>(false);
   const executionError = ref<string | null>(null);
   const executionOutput = ref<string>('');
   const lastSavedFilePath = ref<string | null>(null);
+
+  let activeAbortController: AbortController | null = null;
 
   // Getters
   const activeTool = computed(() => {
@@ -195,7 +225,6 @@ export const useToolStore = defineStore('tools', () => {
     try {
       const savedTools = await tauriApi.loadToolsConfig();
       if (savedTools && savedTools.length > 0) {
-        // Merge or replace
         const toolMap = new Map<string, ToolDefinition>();
         for (const t of DEFAULT_TOOLS) {
           toolMap.set(t.id, t);
@@ -258,6 +287,15 @@ export const useToolStore = defineStore('tools', () => {
     }
   }
 
+  function stopExecution() {
+    if (activeAbortController) {
+      activeAbortController.abort();
+      activeAbortController = null;
+    }
+    isExecuting.value = false;
+    isStreaming.value = false;
+  }
+
   // Trigger post-actions like copy or save to file
   async function handlePostAction(
     postAction: PostActionConfig,
@@ -265,14 +303,18 @@ export const useToolStore = defineStore('tools', () => {
     toolName: string
   ): Promise<{ savedPath?: string; copied?: boolean }> {
     const result: { savedPath?: string; copied?: boolean } = {};
-    if (postAction.type === 'copy_to_clipboard') {
+    const settingsStore = useSettingsStore();
+
+    if (postAction.type === 'copy_to_clipboard' || settingsStore.settings.autoCopyResult) {
       try {
         await navigator.clipboard.writeText(content);
         result.copied = true;
       } catch (e) {
         console.error('PostAction: Failed to copy to clipboard', e);
       }
-    } else if (postAction.type === 'save_to_file' && postAction.saveConfig) {
+    }
+
+    if (postAction.type === 'save_to_file' && postAction.saveConfig) {
       try {
         const ext = postAction.saveConfig.extension || 'txt';
         const dir = postAction.saveConfig.directory || toolName.toLowerCase().replace(/\s+/g, '_');
@@ -290,27 +332,28 @@ export const useToolStore = defineStore('tools', () => {
     return result;
   }
 
-  // Tool execution dispatcher
+  // Dispatch execution across Code, LLM, and CLI engines
   async function executeTool(payload: EnrichedPayload): Promise<string> {
     const tool = activeTool.value;
     if (!tool) return '';
 
+    stopExecution();
+
     isExecuting.value = true;
     executionError.value = null;
     lastSavedFilePath.value = null;
+    executionOutput.value = '';
     const startTime = Date.now();
 
     try {
       let output = '';
 
       if (tool.type === 'code') {
-        // For code tools, frontend uses preprocessedResult or simple transform
-        if (payload.preprocessedResult?.formattedText) {
-          output = payload.preprocessedResult.formattedText;
-        } else {
-          output = payload.actualContent;
-        }
+        // 1. Code Engine Execution
+        output = executeCodeTool(tool.id, payload.actualContent, payload.preprocessedResult);
+        executionOutput.value = output;
       } else if (tool.type === 'cli' && tool.cliConfig) {
+        // 2. CLI Engine Execution
         const cliRes: CliExecuteResponse = await tauriApi.executeCliCommand({
           command: tool.cliConfig.command,
           args: tool.cliConfig.args || [],
@@ -321,16 +364,27 @@ export const useToolStore = defineStore('tools', () => {
         });
         output = cliRes.stdout || cliRes.stderr;
         if (cliRes.exitCode !== 0 && !cliRes.stdout && cliRes.stderr) {
-          executionError.value = `CLI failed with exit code ${cliRes.exitCode}: ${cliRes.stderr}`;
+          executionError.value = `CLI 执行失败 (退出码 ${cliRes.exitCode}): ${cliRes.stderr}`;
         }
+        executionOutput.value = output;
       } else if (tool.type === 'llm') {
-        // LLM tool execution placeholder (will be fully integrated in Phase 4)
-        output = `[AI 响应预览]:\n输入内容已就绪 (${payload.actualContent.slice(0, 100)}...)`;
+        // 3. LLM Engine Streaming Execution
+        const settingsStore = useSettingsStore();
+        activeAbortController = new AbortController();
+        isStreaming.value = true;
+
+        output = await streamLLMCompletion(tool, payload, settingsStore.settings, {
+          signal: activeAbortController.signal,
+          onToken: (token) => {
+            executionOutput.value += token;
+          },
+          onComplete: (full) => {
+            output = full;
+          },
+        });
       }
 
-      executionOutput.value = output;
-
-      // Handle Post Action
+      // Handle Post-Action
       const postActionResult = await handlePostAction(tool.postAction, output, tool.name);
 
       // Record in history
@@ -356,6 +410,8 @@ export const useToolStore = defineStore('tools', () => {
       return '';
     } finally {
       isExecuting.value = false;
+      isStreaming.value = false;
+      activeAbortController = null;
     }
   }
 
@@ -364,6 +420,7 @@ export const useToolStore = defineStore('tools', () => {
     tools,
     activeToolId,
     isExecuting,
+    isStreaming,
     executionError,
     executionOutput,
     lastSavedFilePath,
@@ -379,8 +436,8 @@ export const useToolStore = defineStore('tools', () => {
     deleteTool,
     setActiveTool,
     autoSelectBestTool,
+    stopExecution,
     handlePostAction,
     executeTool,
   };
 });
-
