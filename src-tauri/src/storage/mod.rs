@@ -9,21 +9,22 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub struct AppStorage {
-    pub db: Mutex<Connection>,
-    pub data_dir: PathBuf,
+  pub db: Mutex<Connection>,
+  pub data_dir: PathBuf,
 }
 
 impl AppStorage {
-    /// 初始化存储管理器，确保数据目录与数据库表结构建立
-    pub fn init(data_dir: PathBuf) -> Result<Self, String> {
-        fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
+  /// 初始化存储管理器，确保数据目录与数据库表结构建立
+  pub fn init(data_dir: PathBuf) -> Result<Self, String> {
+    fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
 
-        let db_path = data_dir.join("mtools.db");
-        let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open db: {}", e))?;
+    let db_path = data_dir.join("mtools.db");
+    let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open db: {}", e))?;
 
-        // 初始化所有核心数据表
-        conn.execute_batch(
-            "
+    // 初始化所有核心数据表
+    conn
+      .execute_batch(
+        "
             PRAGMA journal_mode = WAL;
             PRAGMA foreign_keys = ON;
 
@@ -74,16 +75,17 @@ impl AppStorage {
                 is_maximized INTEGER NOT NULL
             );
             ",
-        )
-        .map_err(|e| format!("Failed to initialize database tables: {}", e))?;
+      )
+      .map_err(|e| format!("Failed to initialize database tables: {}", e))?;
 
-        // 初始化图片缓存根目录
-        let image_cache_dir = data_dir.join("cache").join("images");
-        fs::create_dir_all(&image_cache_dir).map_err(|e| format!("Failed to create image cache dir: {}", e))?;
+    // 初始化图片缓存根目录
+    let image_cache_dir = data_dir.join("cache").join("images");
+    fs::create_dir_all(&image_cache_dir)
+      .map_err(|e| format!("Failed to create image cache dir: {}", e))?;
 
-        Ok(Self {
-            db: Mutex::new(conn),
-            data_dir,
-        })
-    }
+    Ok(Self {
+      db: Mutex::new(conn),
+      data_dir,
+    })
+  }
 }

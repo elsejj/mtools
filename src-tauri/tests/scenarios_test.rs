@@ -212,7 +212,10 @@ fn test_scenario_5_natural_language_auto_routing_to_llm_translate() {
     "Tags must include natural-language"
   );
   assert!(
-    enriched.candidate_tool_scores.iter().any(|s| s.tool_id == "llm-translate" && s.score >= 80.0),
+    enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "llm-translate" && s.score >= 80.0),
     "llm-translate candidate score should be >= 80"
   );
 }
