@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { useToolStore } from '@/stores/tools';
 import { usePayloadStore } from '@/stores/payload';
 import CodeHighlight from './CodeHighlight.vue';
+import MarkdownViewer from './MarkdownViewer.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +16,8 @@ import {
   IconPlayerStop,
   IconMinimize,
   IconMaximize,
+  IconEye,
+  IconCode,
 } from '@tabler/icons-vue';
 import { tauriApi } from '@/lib/tauri';
 import { formatJson } from '@/lib/engines/codeEngine';
@@ -24,6 +27,7 @@ const payloadStore = usePayloadStore();
 
 const copied = ref(false);
 const isMinified = ref(false);
+const renderMarkdown = ref(true);
 
 const outputLanguage = computed(() => {
   if (toolStore.activeTool?.type === 'cli') return 'bash';
@@ -101,6 +105,20 @@ function toggleJsonMinify() {
           <span>{{ isMinified ? '格式化' : '压缩' }}</span>
         </Button>
 
+        <!-- Markdown Render Toggle -->
+        <Button
+          v-if="outputLanguage === 'markdown' && toolStore.executionOutput"
+          variant="ghost"
+          size="sm"
+          class="h-6 px-1.5 text-xs cursor-pointer hover:bg-muted"
+          @click="renderMarkdown = !renderMarkdown"
+          :title="renderMarkdown ? '查看 Markdown 源码' : '查看渲染视图 (表格/排版)'"
+        >
+          <IconCode v-if="renderMarkdown" class="h-3.5 w-3.5 mr-1" />
+          <IconEye v-else class="h-3.5 w-3.5 mr-1" />
+          <span>{{ renderMarkdown ? '源码' : '预览' }}</span>
+        </Button>
+
         <!-- Stop Generating button for LLM Streaming -->
         <Button
           v-if="toolStore.isStreaming"
@@ -153,7 +171,12 @@ function toggleJsonMinify() {
 
       <!-- Output Display (includes streaming text) -->
       <div v-else-if="toolStore.executionOutput" class="h-full relative">
+        <MarkdownViewer
+          v-if="outputLanguage === 'markdown' && renderMarkdown"
+          :content="displayedOutput"
+        />
         <CodeHighlight
+          v-else
           :code="displayedOutput"
           :language="outputLanguage"
         />

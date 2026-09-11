@@ -27,13 +27,15 @@ impl ContentSniffer for TimestampSniffer {
       _ => return SniffOutput::default(),
     };
 
-    // 1. 纯数字时间戳探测 (10位秒 或 13位毫秒)
+    // 1. 纯数字时间戳探测 (10位秒 或 13位毫秒 或 16位微秒)
     if text.chars().all(|c| c.is_ascii_digit()) {
       if let Ok(num) = text.parse::<i64>() {
         let dt: Option<DateTime<Utc>> = if text.len() == 10 {
           Utc.timestamp_opt(num, 0).single()
         } else if text.len() == 13 {
           Utc.timestamp_millis_opt(num).single()
+        } else if text.len() == 16 {
+          Some(Utc.timestamp_nanos(num))
         } else {
           None
         };

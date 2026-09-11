@@ -61,7 +61,7 @@ graph TD
     SendKeyEngine -.->|延时等待 50~100ms| ClipboardExtractor
     ClipboardExtractor --> SysClipboard
     ClipboardExtractor --> RustDecoder
-    RustDecoder -->|还原真实实体 (如解出JSON或升格图片)| RustSniffer
+    RustDecoder -->|还原真实实体 如解出JSON或升格图片| RustSniffer
     RustSniffer --> RustPreprocessor
     RustPreprocessor --> IPCEvents
     IPCEvents --> UI_Display
