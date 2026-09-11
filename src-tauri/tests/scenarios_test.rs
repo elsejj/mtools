@@ -182,3 +182,37 @@ fn test_scenario_4_window_geometry_persistence() {
   // Clean up
   let _ = fs::remove_dir_all(&temp_db_dir);
 }
+
+#[test]
+fn test_scenario_5_natural_language_auto_routing_to_llm_translate() {
+  let registry = SnifferRegistry::new();
+  let text = "Native Bigint was added to JS recently, so we added an option to leverage it instead of bignumber.js. However, the parsing with native BigInt is kept an option for backward compability.";
+
+  let decoded = DecoderPipeline::decode(text);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    DecodedOutput::PassThrough => (text.to_string(), Vec::new()),
+    _ => panic!("Expected text or passthrough decoded output"),
+  };
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    text.to_string(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+
+  assert_eq!(
+    enriched.recommended_tool_id, "llm-translate",
+    "Natural language English text should recommend llm-translate"
+  );
+  assert!(
+    enriched.tags.contains(&"natural-language".to_string()),
+    "Tags must include natural-language"
+  );
+  assert!(
+    enriched.candidate_tool_scores.iter().any(|s| s.tool_id == "llm-translate" && s.score >= 80.0),
+    "llm-translate candidate score should be >= 80"
+  );
+}

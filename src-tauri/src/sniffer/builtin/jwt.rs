@@ -59,7 +59,7 @@ impl ContentSniffer for JwtSniffer {
                 confidence: 0.92,
                 tags: vec!["format-jwt".to_string(), "auth-token".to_string()],
                 preprocessed_text: Some(formatted),
-                suggested_tool_id: Some("jwt-viewer".to_string()),
+                suggested_tool_id: Some("jwt-inspector".to_string()),
                 suggested_output_type: Some("json".to_string()),
                 metadata,
             }

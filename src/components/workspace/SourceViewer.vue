@@ -155,14 +155,14 @@ function openImageDir() {
       </div>
 
       <!-- Text Payload View -->
-      <div v-else class="h-full font-mono text-xs leading-relaxed">
+      <div class="h-full font-mono text-[13px] leading-relaxed antialiased">
         <pre
           v-if="payloadStore.showOriginalDecoded"
-          class="whitespace-pre-wrap break-all text-muted-foreground bg-muted/20 p-2 rounded border border-border"
+          class="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-muted-foreground bg-muted/20 p-2.5 rounded border border-border"
         >{{ payloadStore.currentPayload?.rawOriginal }}</pre>
         <pre
           v-else-if="payloadStore.hasPayload"
-          class="whitespace-pre-wrap break-all"
+          class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
         >{{ payloadStore.currentPayload?.actualContent }}</pre>
         <div
           v-else

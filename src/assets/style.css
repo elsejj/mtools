@@ -1,4 +1,3 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap');
 
 @import "tailwindcss";
@@ -8,13 +7,182 @@
 
 @theme inline {
   --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.42 0.08 135);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.96 0.01 135);
+  --secondary-foreground: oklch(0.2 0.05 135);
+  --muted: oklch(0.96 0.01 135);
+  --muted-foreground: oklch(0.55 0.03 135);
+  --accent: oklch(0.95 0.02 135);
+  --accent-foreground: oklch(0.2 0.05 135);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.90 0.01 135);
+  --input: oklch(0.90 0.01 135);
+  --ring: oklch(0.60 0.08 135);
+  --radius: 0.5rem;
+
+  /* Syntax Highlighting Tokens (Light) */
+  --token-comment: #64748b;
+  --token-punctuation: #475569;
+  --token-property: #0284c7;
+  --token-string: #059669;
+  --token-number: #d97706;
+  --token-boolean: #ea580c;
+  --token-keyword: #7c3aed;
+  --token-operator: #334155;
+  --token-function: #2563eb;
+}
+
+.dark {
+  --background: oklch(0.145 0.01 135);
+  --foreground: oklch(0.985 0.005 135);
+  --card: oklch(0.17 0.01 135);
+  --card-foreground: oklch(0.985 0.005 135);
+  --popover: oklch(0.17 0.01 135);
+  --popover-foreground: oklch(0.985 0.005 135);
+  --primary: oklch(0.65 0.1 135);
+  --primary-foreground: oklch(0.12 0.02 135);
+  --secondary: oklch(0.22 0.02 135);
+  --secondary-foreground: oklch(0.985 0.005 135);
+  --muted: oklch(0.22 0.02 135);
+  --muted-foreground: oklch(0.68 0.03 135);
+  --accent: oklch(0.24 0.02 135);
+  --accent-foreground: oklch(0.985 0.005 135);
+  --destructive: oklch(0.4 0.14 25);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.25 0.02 135);
+  --input: oklch(0.25 0.02 135);
+  --ring: oklch(0.55 0.08 135);
+
+  /* Syntax Highlighting Tokens (Dark) */
+  --token-comment: #94a3b8;
+  --token-punctuation: #cbd5e1;
+  --token-property: #38bdf8;
+  --token-string: #34d399;
+  --token-number: #fbbf24;
+  --token-boolean: #fb923c;
+  --token-keyword: #c084fc;
+  --token-operator: #e2e8f0;
+  --token-function: #60a5fa;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+}
+
+/* Prism Token Highlighting and Wrapping */
+code[class*="language-"],
+pre[class*="language-"] {
+  color: var(--foreground) !important;
+  text-shadow: none !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+  background: transparent !important;
+}
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: var(--token-comment) !important;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: var(--token-punctuation) !important;
+}
+
+.token.property,
+.token.tag,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: var(--token-property) !important;
+}
+
+.token.boolean {
+  color: var(--token-boolean) !important;
+  font-weight: 500;
+}
+
+.token.number {
+  color: var(--token-number) !important;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: var(--token-string) !important;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: var(--token-operator) !important;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: var(--token-keyword) !important;
+  font-weight: 500;
+}
+
+.token.function,
+.token.class-name {
+  color: var(--token-function) !important;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: var(--token-number) !important;
 }

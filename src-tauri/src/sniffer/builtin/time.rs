@@ -57,7 +57,7 @@ impl ContentSniffer for TimestampSniffer {
                         confidence: 0.88,
                         tags: vec!["format-timestamp".to_string()],
                         preprocessed_text: Some(formatted),
-                        suggested_tool_id: Some("time-converter".to_string()),
+                        suggested_tool_id: Some("timestamp-converter".to_string()),
                         suggested_output_type: Some("text".to_string()),
                         metadata,
                     };

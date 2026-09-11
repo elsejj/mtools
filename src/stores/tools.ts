@@ -12,6 +12,7 @@ import { tauriApi } from '@/lib/tauri';
 import { executeCodeTool } from '@/lib/engines/codeEngine';
 import { streamLLMCompletion } from '@/lib/engines/llmEngine';
 import { useSettingsStore } from './settings';
+import { usePayloadStore } from './payload';
 
 export const DEFAULT_TOOLS: ToolDefinition[] = [
   {
@@ -26,7 +27,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     matcher: {
       acceptedTypes: ['text'],
       requiredFormats: ['json'],
-      basePriority: 90,
+      basePriority: 10,
     },
     type: 'code',
     postAction: { type: 'none' },
@@ -47,7 +48,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     matcher: {
       acceptedTypes: ['text'],
       requiredFormats: ['jwt'],
-      basePriority: 85,
+      basePriority: 10,
     },
     type: 'code',
     postAction: { type: 'none' },
@@ -68,7 +69,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     matcher: {
       acceptedTypes: ['text'],
       requiredFormats: ['time'],
-      basePriority: 80,
+      basePriority: 10,
     },
     type: 'code',
     postAction: { type: 'none' },
@@ -89,7 +90,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     matcher: {
       acceptedTypes: ['text'],
       requiredFormats: ['url'],
-      basePriority: 75,
+      basePriority: 10,
     },
     type: 'code',
     postAction: { type: 'none' },
@@ -109,7 +110,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     sortOrder: 5,
     matcher: {
       acceptedTypes: ['image'],
-      basePriority: 95,
+      basePriority: 10,
     },
     type: 'llm',
     postAction: { type: 'copy_to_clipboard' },
@@ -132,7 +133,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     sortOrder: 6,
     matcher: {
       acceptedTypes: ['text'],
-      basePriority: 45,
+      basePriority: 70,
     },
     type: 'llm',
     postAction: { type: 'none' },
@@ -202,6 +203,7 @@ export function calculateToolMatchScore(
 
   // Format checks
   if (tool.matcher.requiredFormats && tool.matcher.requiredFormats.length > 0) {
+    let formatMatched = false;
     for (const fmt of tool.matcher.requiredFormats) {
       if (fmt === 'json') {
         if (
@@ -210,23 +212,32 @@ export function calculateToolMatchScore(
         ) {
           try {
             JSON.parse(content);
-            score += 25;
+            score += 85;
+            formatMatched = true;
           } catch {}
         }
       } else if (fmt === 'url') {
-        if (content.startsWith('http://') || content.startsWith('https://') || content.includes('?')) {
-          score += 20;
+        if (content.startsWith('http://') || content.startsWith('https://') || content.startsWith('ftp://')) {
+          score += 80;
+          formatMatched = true;
         }
       } else if (fmt === 'jwt') {
-        if (content.split('.').length === 3) {
-          score += 25;
+        const parts = content.split('.');
+        if (parts.length === 3 && parts[0].length >= 5 && parts[1].length >= 5) {
+          score += 85;
+          formatMatched = true;
         }
       } else if (fmt === 'time') {
         const num = Number(content);
         if (!isNaN(num) && (content.length === 10 || content.length === 13)) {
-          score += 20;
+          score += 80;
+          formatMatched = true;
         }
       }
+    }
+    // If requiredFormats is configured, matching at least one is mandatory
+    if (!formatMatched) {
+      return 0;
     }
   }
 
@@ -269,12 +280,21 @@ export const useToolStore = defineStore('tools', () => {
   });
 
   function getRecommendedTools(candidates: ToolScoreItem[]): ToolDefinition[] {
-    if (!candidates || candidates.length === 0) {
-      return tools.value.filter((t) => t.enabled).slice(0, 5);
-    }
     const scoreMap = new Map<string, number>();
-    for (const c of candidates) {
+    for (const c of candidates || []) {
       scoreMap.set(c.toolId, c.score);
+    }
+
+    // Dynamic scoring complement for all enabled tools based on active payload
+    const payloadStore = usePayloadStore();
+    if (payloadStore.currentPayload) {
+      const p = payloadStore.currentPayload;
+      const sampleType = p.payloadType === 'image' ? 'image' : 'text';
+      for (const t of tools.value) {
+        if (!scoreMap.has(t.id)) {
+          scoreMap.set(t.id, calculateToolMatchScore(t, p.actualContent, sampleType));
+        }
+      }
     }
 
     return [...tools.value]
@@ -282,7 +302,10 @@ export const useToolStore = defineStore('tools', () => {
       .sort((a, b) => {
         const scoreA = scoreMap.get(a.id) ?? 0;
         const scoreB = scoreMap.get(b.id) ?? 0;
-        return scoreB - scoreA;
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
+        return a.sortOrder - b.sortOrder;
       });
   }
 
@@ -296,7 +319,22 @@ export const useToolStore = defineStore('tools', () => {
           toolMap.set(t.id, t);
         }
         for (const t of savedTools) {
-          toolMap.set(t.id, t);
+          if (toolMap.has(t.id)) {
+            const def = toolMap.get(t.id)!;
+            toolMap.set(t.id, {
+              ...def,
+              ...t,
+              matcher: {
+                ...def.matcher,
+                ...t.matcher,
+                acceptedTypes: def.matcher.acceptedTypes,
+                requiredFormats: def.matcher.requiredFormats,
+                basePriority: def.matcher.basePriority,
+              },
+            });
+          } else {
+            toolMap.set(t.id, t);
+          }
         }
         tools.value = Array.from(toolMap.values()).sort((a, b) => a.sortOrder - b.sortOrder);
       }
@@ -403,9 +441,27 @@ export const useToolStore = defineStore('tools', () => {
       return;
     }
     if (candidateScores && candidateScores.length > 0) {
-      const highest = candidateScores[0];
+      const sorted = [...candidateScores].sort((a, b) => b.score - a.score);
+      const highest = sorted[0];
       if (highest && highest.score > 0 && tools.value.some((t) => t.id === highest.toolId && t.enabled)) {
         setActiveTool(highest.toolId);
+        return;
+      }
+    }
+    const payloadStore = usePayloadStore();
+    if (payloadStore.currentPayload) {
+      const p = payloadStore.currentPayload;
+      const sampleType = p.payloadType === 'image' ? 'image' : 'text';
+      const best = tools.value
+        .filter((t) => t.enabled)
+        .map((t) => ({
+          toolId: t.id,
+          score: calculateToolMatchScore(t, p.actualContent, sampleType),
+        }))
+        .sort((a, b) => b.score - a.score)[0];
+
+      if (best && best.score > 0) {
+        setActiveTool(best.toolId);
       }
     }
   }

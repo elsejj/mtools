@@ -43,6 +43,7 @@ impl SnifferRegistry {
         registry.register(Box::new(builtin::jwt::JwtSniffer::default()));
         registry.register(Box::new(builtin::time::TimestampSniffer::default()));
         registry.register(Box::new(builtin::image::ImageSniffer::default()));
+        registry.register(Box::new(builtin::text::TextSniffer::default()));
         registry
     }
 
@@ -65,8 +66,8 @@ impl SnifferRegistry {
         let mut best_confidence = 0.0f32;
         let mut selected_preprocessed = None;
         let mut recommended_tool_id = match input {
-            SniffInput::Image(_) => "ai-ocr".to_string(),
-            SniffInput::Text(_) => "text-viewer".to_string(),
+            SniffInput::Image(_) => "ocr-extractor".to_string(),
+            SniffInput::Text(_) => "llm-translate".to_string(),
         };
         let mut candidate_scores = Vec::new();
         let mut detected_format = "plain".to_string();

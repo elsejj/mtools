@@ -68,7 +68,7 @@ impl ContentSniffer for UrlSniffer {
                 confidence: 0.90,
                 tags: vec!["format-url".to_string()],
                 preprocessed_text: Some(preprocessed),
-                suggested_tool_id: Some("url-decoder".to_string()),
+                suggested_tool_id: Some("url-codec".to_string()),
                 suggested_output_type: Some("text".to_string()),
                 metadata,
             }
