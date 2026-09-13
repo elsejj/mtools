@@ -179,6 +179,61 @@ fn test_scenario_4_window_geometry_persistence() {
   assert_eq!(loaded_geom.height, 720);
   assert_eq!(loaded_geom.is_maximized, false);
 
+  // 3. Maximize window: should set is_maximized to true while preserving normal width & height
+  {
+    let conn = storage.db.lock().unwrap();
+    save_window_geometry(
+      &conn,
+      &WindowGeometry {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        is_maximized: true,
+      },
+    )
+    .unwrap();
+  }
+
+  let maximized_geom = {
+    let conn = storage.db.lock().unwrap();
+    get_window_geometry(&conn).unwrap().unwrap()
+  };
+  assert_eq!(maximized_geom.is_maximized, true);
+  assert_eq!(
+    maximized_geom.width, 1080,
+    "Normal width should be preserved when maximized"
+  );
+  assert_eq!(
+    maximized_geom.height, 720,
+    "Normal height should be preserved when maximized"
+  );
+
+  // 4. Abnormal tiny/minimized size (e.g. 0x0) should be ignored
+  {
+    let conn = storage.db.lock().unwrap();
+    save_window_geometry(
+      &conn,
+      &WindowGeometry {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        is_maximized: false,
+      },
+    )
+    .unwrap();
+  }
+
+  let intact_geom = {
+    let conn = storage.db.lock().unwrap();
+    get_window_geometry(&conn).unwrap().unwrap()
+  };
+  assert_eq!(
+    intact_geom.width, 1080,
+    "Tiny dimensions should not overwrite valid geometry"
+  );
+
   // Clean up
   let _ = fs::remove_dir_all(&temp_db_dir);
 }

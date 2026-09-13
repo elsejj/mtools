@@ -245,17 +245,7 @@ pub async fn restore_window_geometry(
 ) -> Result<(), String> {
   let conn = storage.db.lock().map_err(|e| e.to_string())?;
   if let Ok(Some(geom)) = storage::window::get_window_geometry(&conn) {
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-      x: geom.x,
-      y: geom.y,
-    }));
-    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-      width: geom.width,
-      height: geom.height,
-    }));
-    if geom.is_maximized {
-      let _ = window.maximize();
-    }
+    storage::window::apply_window_geometry(&window, &geom);
   }
   Ok(())
 }

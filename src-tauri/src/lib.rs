@@ -101,12 +101,50 @@ pub fn run() {
       }
     }))
     .plugin(tauri_plugin_opener::init())
+    .on_window_event(|window, event| {
+      match event {
+        tauri::WindowEvent::CloseRequested { .. }
+        | tauri::WindowEvent::Destroyed
+        | tauri::WindowEvent::Focused(false) => {
+          if let Some(storage) = window.app_handle().try_state::<AppStorage>() {
+            if let Ok(conn) = storage.db.lock() {
+              let is_max = window.is_maximized().unwrap_or(false);
+              let pos = window.outer_position().unwrap_or_default();
+              let size = window.inner_size().unwrap_or_default();
+              if size.width >= 400 && size.height >= 300 {
+                let _ = storage::window::save_window_geometry(
+                  &conn,
+                  &crate::models::WindowGeometry {
+                    x: pos.x,
+                    y: pos.y,
+                    width: size.width,
+                    height: size.height,
+                    is_maximized: is_max,
+                  },
+                );
+              }
+            }
+          }
+        }
+        _ => {}
+      }
+    })
     .setup(|app| {
       let data_dir = dirs::data_dir()
         .map(|p| p.join("mtools"))
         .unwrap_or_else(|| std::path::PathBuf::from("./data"));
 
       let storage = AppStorage::init(data_dir)?;
+
+      // 启动时自动恢复上次记忆的窗口尺寸与位置
+      if let Some(window) = app.get_webview_window("main") {
+        if let Ok(conn) = storage.db.lock() {
+          if let Ok(Some(geom)) = storage::window::get_window_geometry(&conn) {
+            storage::window::apply_window_geometry(&window, &geom);
+          }
+        }
+      }
+
       app.manage(storage);
 
       let registry = SnifferRegistry::new();
