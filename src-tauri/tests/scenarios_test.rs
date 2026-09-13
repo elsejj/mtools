@@ -256,3 +256,55 @@ fn test_scenario_6_date_string_auto_routing_to_timestamp_converter() {
     "timestamp-converter score must be >= 85"
   );
 }
+
+#[test]
+fn test_scenario_8_python_float_timestamp_auto_routing() {
+  let registry = SnifferRegistry::new();
+  let text = "1789264888.123456";
+
+  let decoded = DecoderPipeline::decode(text);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    DecodedOutput::PassThrough => (text.to_string(), Vec::new()),
+    _ => panic!("Expected text or passthrough decoded output"),
+  };
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    text.to_string(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+
+  assert_eq!(
+    enriched.recommended_tool_id, "timestamp-converter",
+    "Python float timestamp '1789264888.123456' must route to timestamp-converter"
+  );
+  assert!(
+    enriched
+      .tags
+      .contains(&"format-python-timestamp".to_string()),
+    "Tags must include format-python-timestamp"
+  );
+  assert!(
+    enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "timestamp-converter" && s.score >= 85.0),
+    "timestamp-converter score must be >= 85"
+  );
+
+  let preprocessed = enriched
+    .preprocessed_result
+    .expect("Must have preprocessed_result");
+  assert_eq!(preprocessed.suggested_output_type, "markdown");
+  assert!(
+    preprocessed
+      .formatted_text
+      .as_ref()
+      .unwrap()
+      .contains("| **Python 浮点时间戳 (s)** | `1789264888.123456` |"),
+    "Formatted text must contain markdown table with python float timestamp"
+  );
+}

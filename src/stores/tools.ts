@@ -75,7 +75,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     postAction: { type: "none" },
     codeConfig: {
       script: "",
-      outputType: "json",
+      outputType: "markdown",
     },
   },
   {
@@ -239,6 +239,10 @@ export function calculateToolMatchScore(
           !isNaN(num) &&
           (content.length === 10 || content.length === 13 || content.length === 16)
         ) {
+          score += 85;
+          formatMatched = true;
+        } else if (!isNaN(num) && /^\d{9,11}\.\d+$/.test(content)) {
+          // Python float timestamp (e.g. 1789264888.123456)
           score += 85;
           formatMatched = true;
         } else {

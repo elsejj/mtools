@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useToolStore } from '@/stores/tools';
-import { usePayloadStore } from '@/stores/payload';
-import CodeHighlight from './CodeHighlight.vue';
-import MarkdownViewer from './MarkdownViewer.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ref, computed } from "vue";
+import { useToolStore } from "@/stores/tools";
+import { usePayloadStore } from "@/stores/payload";
+import CodeHighlight from "./CodeHighlight.vue";
+import MarkdownViewer from "./MarkdownViewer.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   IconCopy,
   IconCheck,
@@ -18,9 +18,9 @@ import {
   IconMaximize,
   IconEye,
   IconCode,
-} from '@tabler/icons-vue';
-import { tauriApi } from '@/lib/tauri';
-import { formatJson } from '@/lib/engines/codeEngine';
+} from "@tabler/icons-vue";
+import { tauriApi } from "@/lib/tauri";
+import { formatJson } from "@/lib/engines/codeEngine";
 
 const toolStore = useToolStore();
 const payloadStore = usePayloadStore();
@@ -30,18 +30,24 @@ const isMinified = ref(false);
 const renderMarkdown = ref(true);
 
 const outputLanguage = computed(() => {
-  if (toolStore.activeTool?.type === 'cli') return 'bash';
+  if (toolStore.activeTool?.type === "cli") return "bash";
+  if (toolStore.activeTool?.id === "timestamp-converter") {
+    return "markdown";
+  }
+  if (
+    toolStore.activeTool?.id === "json-formatter" ||
+    toolStore.activeTool?.id === "jwt-inspector"
+  ) {
+    return "json";
+  }
   if (payloadStore.currentPayload?.preprocessedResult?.suggestedOutputType) {
     return payloadStore.currentPayload.preprocessedResult.suggestedOutputType;
   }
-  if (toolStore.activeTool?.id === 'json-formatter' || toolStore.activeTool?.id === 'jwt-inspector') {
-    return 'json';
-  }
-  return 'markdown';
+  return "markdown";
 });
 
 const displayedOutput = computed(() => {
-  if (toolStore.activeTool?.id === 'json-formatter' && isMinified.value) {
+  if (toolStore.activeTool?.id === "json-formatter" && isMinified.value) {
     try {
       return formatJson(toolStore.executionOutput, true);
     } catch {
@@ -61,7 +67,7 @@ async function copyOutput() {
       copied.value = false;
     }, 1600);
   } catch (err) {
-    console.error('Failed to copy output:', err);
+    console.error("Failed to copy output:", err);
   }
 }
 
@@ -77,15 +83,21 @@ function toggleJsonMinify() {
 <template>
   <div class="flex h-full flex-col overflow-hidden select-none bg-background">
     <!-- Header -->
-    <div class="flex h-9 shrink-0 items-center justify-between border-b border-border px-3 bg-muted/10 text-xs">
+    <div
+      class="flex h-9 shrink-0 items-center justify-between border-b border-border px-3 bg-muted/10 text-xs"
+    >
       <div class="flex items-center space-x-2">
         <span class="font-medium text-foreground">
-          {{ toolStore.activeTool?.name || '处理结果' }}
+          {{ toolStore.activeTool?.name || "处理结果" }}
         </span>
         <Badge variant="outline" class="text-[10px] px-1 py-0 uppercase">
-          {{ toolStore.activeTool?.type || 'code' }}
+          {{ toolStore.activeTool?.type || "code" }}
         </Badge>
-        <Badge v-if="outputLanguage" variant="secondary" class="text-[10px] px-1 py-0 uppercase font-mono">
+        <Badge
+          v-if="outputLanguage"
+          variant="secondary"
+          class="text-[10px] px-1 py-0 uppercase font-mono"
+        >
           {{ outputLanguage }}
         </Badge>
       </div>
@@ -102,7 +114,7 @@ function toggleJsonMinify() {
         >
           <IconMaximize v-if="isMinified" class="h-3.5 w-3.5 mr-1" />
           <IconMinimize v-else class="h-3.5 w-3.5 mr-1" />
-          <span>{{ isMinified ? '格式化' : '压缩' }}</span>
+          <span>{{ isMinified ? "格式化" : "压缩" }}</span>
         </Button>
 
         <!-- Markdown Render Toggle -->
@@ -116,7 +128,7 @@ function toggleJsonMinify() {
         >
           <IconCode v-if="renderMarkdown" class="h-3.5 w-3.5 mr-1" />
           <IconEye v-else class="h-3.5 w-3.5 mr-1" />
-          <span>{{ renderMarkdown ? '源码' : '预览' }}</span>
+          <span>{{ renderMarkdown ? "源码" : "预览" }}</span>
         </Button>
 
         <!-- Stop Generating button for LLM Streaming -->
@@ -141,7 +153,7 @@ function toggleJsonMinify() {
         >
           <IconCheck v-if="copied" class="h-3.5 w-3.5 mr-1 text-green-500" />
           <IconCopy v-else class="h-3.5 w-3.5 mr-1" />
-          <span>{{ copied ? '已复制' : '复制结果' }}</span>
+          <span>{{ copied ? "已复制" : "复制结果" }}</span>
         </Button>
       </div>
     </div>
@@ -166,7 +178,9 @@ function toggleJsonMinify() {
           <IconAlertTriangle class="h-4 w-4" />
           <span>执行错误</span>
         </div>
-        <pre class="font-mono whitespace-pre-wrap break-all rounded border border-destructive/20 bg-destructive/10 p-3">{{ toolStore.executionError }}</pre>
+        <pre
+          class="font-mono whitespace-pre-wrap break-all rounded border border-destructive/20 bg-destructive/10 p-3"
+          >{{ toolStore.executionError }}</pre>
       </div>
 
       <!-- Output Display (includes streaming text) -->
@@ -175,11 +189,7 @@ function toggleJsonMinify() {
           v-if="outputLanguage === 'markdown' && renderMarkdown"
           :content="displayedOutput"
         />
-        <CodeHighlight
-          v-else
-          :code="displayedOutput"
-          :language="outputLanguage"
-        />
+        <CodeHighlight v-else :code="displayedOutput" :language="outputLanguage" />
         <span
           v-if="toolStore.isStreaming"
           class="inline-block h-3.5 w-1.5 bg-primary animate-pulse ml-1 align-middle"
@@ -203,7 +213,11 @@ function toggleJsonMinify() {
       class="flex h-8 shrink-0 items-center justify-between border-t border-border bg-muted/40 px-3 text-xs text-muted-foreground"
     >
       <div class="flex items-center space-x-1.5 truncate pr-2">
-        <span class="truncate">已自动落盘：<code class="font-mono text-[11px]">{{ toolStore.lastSavedFilePath }}</code></span>
+        <span class="truncate"
+          >已自动落盘：<code class="font-mono text-[11px]">{{
+            toolStore.lastSavedFilePath
+          }}</code></span
+        >
       </div>
       <Button
         variant="ghost"

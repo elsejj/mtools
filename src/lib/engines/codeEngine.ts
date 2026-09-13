@@ -150,67 +150,126 @@ export function convertTimestamp(input: string): string {
     throw new Error("无法识别的时间戳格式 (输入内容不符合时间戳或日期特征)");
   }
 
-  const num = Number(trimmed);
+  let sec: number;
+  let ms: number;
+  let pythonFloat: string;
+  let subsecondsStr: string | undefined;
 
-  if (!isNaN(num) && trimmed.length >= 9 && trimmed.length <= 16) {
-    // Numeric timestamp
-    const ms = trimmed.length === 10 ? num * 1000 : num;
-    const date = new Date(ms);
-
-    if (isNaN(date.getTime())) {
-      throw new Error("无效的时间戳数值");
+  // 1. Python 浮点数时间戳 (如 1789264888.123456, 1789264888.0)
+  const isFloatTimestamp = /^\d{9,11}\.\d+$/.test(trimmed);
+  if (isFloatTimestamp) {
+    const floatVal = parseFloat(trimmed);
+    if (isNaN(floatVal) || floatVal <= 0 || floatVal > 253402300799) {
+      throw new Error("无效的浮点时间戳数值");
     }
-
-    const now = Date.now();
-    const diffSec = Math.floor((now - ms) / 1000);
-    let relative = "";
-    if (diffSec >= 0) {
-      if (diffSec < 60) relative = `${diffSec} 秒前`;
-      else if (diffSec < 3600) relative = `${Math.floor(diffSec / 60)} 分钟前`;
-      else if (diffSec < 86400) relative = `${Math.floor(diffSec / 3600)} 小时前`;
-      else relative = `${Math.floor(diffSec / 86400)} 天前`;
+    sec = Math.floor(floatVal);
+    ms = Math.round(floatVal * 1000);
+    pythonFloat = trimmed;
+    const parts = trimmed.split(".");
+    subsecondsStr = parts[1];
+  } else {
+    const num = Number(trimmed);
+    if (!isNaN(num) && /^\d+$/.test(trimmed) && trimmed.length >= 9 && trimmed.length <= 16) {
+      // 2. 纯数字整数时间戳 (10位秒 / 13位毫秒 / 16位微秒)
+      if (trimmed.length === 10) {
+        sec = num;
+        ms = num * 1000;
+        pythonFloat = `${sec}.0`;
+      } else if (trimmed.length === 13) {
+        sec = Math.floor(num / 1000);
+        ms = num;
+        const sub = num % 1000;
+        pythonFloat = sub === 0 ? `${sec}.0` : (num / 1000).toFixed(3);
+        if (sub !== 0) {
+          subsecondsStr = String(sub).padStart(3, "0");
+        }
+      } else if (trimmed.length === 16) {
+        sec = Math.floor(num / 1_000_000);
+        ms = Math.floor(num / 1_000);
+        const sub = num % 1_000_000;
+        pythonFloat = sub === 0 ? `${sec}.0` : (num / 1_000_000).toFixed(6);
+        if (sub !== 0) {
+          subsecondsStr = String(sub).padStart(6, "0");
+        }
+      } else {
+        sec = Math.floor(num / 1000);
+        ms = num;
+        pythonFloat = (num / 1000).toFixed(3);
+      }
     } else {
-      const future = Math.abs(diffSec);
-      if (future < 60) relative = `${future} 秒后`;
-      else if (future < 3600) relative = `${Math.floor(future / 60)} 分钟后`;
-      else relative = `${Math.floor(future / 3600)} 小时后`;
+      // 3. 日期与时间字符串 (如 2026-09-13 10:01:28+08:00, 2024-1-2, 2024/01/02 12:00:00, ISO8601)
+      let parsedDate = new Date(trimmed);
+      if (isNaN(parsedDate.getTime())) {
+        parsedDate = new Date(trimmed.replace(/\//g, "-"));
+      }
+      if (isNaN(parsedDate.getTime())) {
+        parsedDate = new Date(trimmed.replace(/\//g, "-").replace(" ", "T"));
+      }
+      if (isNaN(parsedDate.getTime())) {
+        throw new Error("无法识别的时间戳或日期格式");
+      }
+      ms = parsedDate.getTime();
+      sec = Math.floor(ms / 1000);
+      const sub = ms % 1000;
+      pythonFloat = sub === 0 ? `${sec}.0` : (ms / 1000).toFixed(3);
+      if (sub !== 0) {
+        subsecondsStr = String(sub).padStart(3, "0");
+      }
     }
-
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const localFormatted = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-
-    return JSON.stringify(
-      {
-        timestampSeconds: Math.floor(ms / 1000),
-        timestampMilliseconds: ms,
-        localTime: localFormatted,
-        utcTime: date.toUTCString(),
-        iso8601: date.toISOString(),
-        relative,
-      },
-      null,
-      2,
-    );
   }
 
-  // Date String to Timestamp
-  const parsedDate = new Date(trimmed);
-  if (!isNaN(parsedDate.getTime())) {
-    const ms = parsedDate.getTime();
-    return JSON.stringify(
-      {
-        input: trimmed,
-        timestampSeconds: Math.floor(ms / 1000),
-        timestampMilliseconds: ms,
-        localTime: parsedDate.toLocaleString(),
-        iso8601: parsedDate.toISOString(),
-      },
-      null,
-      2,
-    );
+  const date = new Date(ms);
+  if (isNaN(date.getTime())) {
+    throw new Error("无效的时间戳数值");
   }
 
-  throw new Error("无法识别的时间戳或日期格式");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const localBase = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  const localFormatted = subsecondsStr ? `${localBase}.${subsecondsStr}` : localBase;
+
+  const utcBase = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+  const utcFormatted = subsecondsStr ? `${utcBase}.${subsecondsStr} UTC` : `${utcBase} UTC`;
+
+  const isoFormatted = date.toISOString();
+
+  const now = Date.now();
+  const diffSec = Math.floor((now - ms) / 1000);
+  let relative = "";
+  if (Math.abs(diffSec) < 5) {
+    relative = "刚刚";
+  } else if (diffSec >= 0) {
+    if (diffSec < 60) relative = `${diffSec} 秒前`;
+    else if (diffSec < 3600) relative = `${Math.floor(diffSec / 60)} 分钟前`;
+    else if (diffSec < 86400) relative = `${Math.floor(diffSec / 3600)} 小时前`;
+    else if (diffSec < 86400 * 30) relative = `${Math.floor(diffSec / 86400)} 天前`;
+    else if (diffSec < 86400 * 365) relative = `${Math.floor(diffSec / (86400 * 30))} 个月前`;
+    else relative = `${Math.floor(diffSec / (86400 * 365))} 年前`;
+  } else {
+    const future = Math.abs(diffSec);
+    if (future < 60) relative = `${future} 秒后`;
+    else if (future < 3600) relative = `${Math.floor(future / 60)} 分钟后`;
+    else if (future < 86400) relative = `${Math.floor(future / 3600)} 小时后`;
+    else if (future < 86400 * 30) relative = `${Math.floor(future / 86400)} 天后`;
+    else if (future < 86400 * 365) relative = `${Math.floor(future / (86400 * 30))} 个月后`;
+    else relative = `${Math.floor(future / (86400 * 365))} 年后`;
+  }
+
+  const rows: [string, string][] = [
+    ["原始输入 (Input)", `\`${trimmed}\``],
+    ["本地时间 (Local Time)", localFormatted],
+    ["UTC 时间 (UTC Time)", utcFormatted],
+    ["ISO 8601", `\`${isoFormatted}\``],
+    ["秒级时间戳 (s)", `\`${sec}\``],
+    ["毫秒级时间戳 (ms)", `\`${ms}\``],
+    ["Python 浮点时间戳 (s)", `\`${pythonFloat}\``],
+    ["相对时间 (Relative)", relative],
+  ];
+
+  let md = "| 格式 / 属性 | 数值 / 结果 |\n| :--- | :--- |\n";
+  for (const [prop, val] of rows) {
+    md += `| **${prop}** | ${val} |\n`;
+  }
+  return md;
 }
 
 /**
