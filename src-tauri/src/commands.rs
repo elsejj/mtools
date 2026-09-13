@@ -15,8 +15,14 @@ pub async fn simulate_copy() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn simulate_paste(app: tauri::AppHandle, content: Option<String>) -> Result<(), String> {
-  if let Some(text) = content {
+pub async fn simulate_paste(
+  app: tauri::AppHandle,
+  content: Option<String>,
+  html: Option<String>,
+) -> Result<(), String> {
+  if let Some(html_content) = html {
+    let _ = app.clipboard().write_html(html_content, content.clone());
+  } else if let Some(text) = content {
     let _ = app.clipboard().write_text(text);
   }
   if let Some(w) = app.get_webview_window("main") {
@@ -25,6 +31,18 @@ pub async fn simulate_paste(app: tauri::AppHandle, content: Option<String>) -> R
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
   sendkey::send_keys(sendkey::PASTE_KEY)?;
   Ok(())
+}
+
+#[tauri::command]
+pub async fn write_clipboard_html(
+  app: tauri::AppHandle,
+  html: String,
+  alt_text: Option<String>,
+) -> Result<(), String> {
+  app
+    .clipboard()
+    .write_html(html, alt_text)
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

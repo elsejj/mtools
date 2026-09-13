@@ -306,13 +306,18 @@ impl ContentSniffer for CalculatorSniffer {
       return SniffOutput::default();
     }
 
-    // Exclude JSON, URL, base64 data, XML
+    // Exclude JSON, URL, base64 data, XML, file paths
     if text.starts_with('{')
       || text.starts_with('[')
       || text.starts_with('<')
       || text.starts_with("http://")
       || text.starts_with("https://")
       || text.starts_with("data:")
+      || text.starts_with('/')
+      || text.starts_with('~')
+      || text.starts_with("file://")
+      || (text.len() >= 3 && text.chars().next().unwrap().is_ascii_alphabetic() && &text[1..3] == ":\\")
+      || (text.contains('/') && (text.ends_with(".jpg") || text.ends_with(".jpeg") || text.ends_with(".png") || text.ends_with(".webp") || text.ends_with(".gif") || text.ends_with(".txt") || text.ends_with(".json") || text.ends_with(".md")))
     {
       return SniffOutput::default();
     }
@@ -379,19 +384,17 @@ impl ContentSniffer for CalculatorSniffer {
       }
     }
 
-    // Try evaluating in Rust
-    let evaluated = simple_eval(text);
-    let (formatted, metadata) = if let Some(val) = evaluated {
-      let table = generate_calc_markdown(text, val);
-      let mut map = serde_json::Map::new();
-      map.insert("result".to_string(), val.into());
-      map.insert("exact".to_string(), format_exact(val).into());
-      map.insert("en".to_string(), format_english(val).into());
-      map.insert("cn".to_string(), format_chinese(val).into());
-      (Some(table), map)
-    } else {
-      (None, serde_json::Map::new())
+    // Try evaluating in Rust - only match if evaluation succeeds
+    let Some(val) = simple_eval(text) else {
+      return SniffOutput::default();
     };
+
+    let table = generate_calc_markdown(text, val);
+    let mut map = serde_json::Map::new();
+    map.insert("result".to_string(), val.into());
+    map.insert("exact".to_string(), format_exact(val).into());
+    map.insert("en".to_string(), format_english(val).into());
+    map.insert("cn".to_string(), format_chinese(val).into());
 
     let confidence = if has_math_op || has_unit { 0.93 } else { 0.80 };
 
@@ -399,10 +402,10 @@ impl ContentSniffer for CalculatorSniffer {
       matched: true,
       confidence,
       tags: vec!["format-calc".to_string(), "format-math".to_string()],
-      preprocessed_text: formatted,
+      preprocessed_text: Some(table),
       suggested_tool_id: Some("calculator".to_string()),
       suggested_output_type: Some("markdown".to_string()),
-      metadata,
+      metadata: map,
     }
   }
 }

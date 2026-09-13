@@ -21,19 +21,21 @@ import {
 } from "@tabler/icons-vue";
 import { tauriApi } from "@/lib/tauri";
 import { formatJson } from "@/lib/engines/codeEngine";
+import { copyContentToClipboard } from "@/lib/clipboard";
 
 const toolStore = useToolStore();
 const payloadStore = usePayloadStore();
 
 const copied = ref(false);
 const isMinified = ref(false);
-const renderMarkdown = ref(true);
 
 const outputLanguage = computed(() => {
   if (toolStore.activeTool?.type === "cli") return "bash";
   if (
     toolStore.activeTool?.id === "timestamp-converter" ||
-    toolStore.activeTool?.id === "calculator"
+    toolStore.activeTool?.id === "calculator" ||
+    toolStore.activeTool?.id === "ocr-extractor" ||
+    toolStore.activeTool?.id === "llm-translate"
   ) {
     return "markdown";
   }
@@ -47,6 +49,10 @@ const outputLanguage = computed(() => {
     return payloadStore.currentPayload.preprocessedResult.suggestedOutputType;
   }
   return "markdown";
+});
+
+const isPreviewMode = computed(() => {
+  return outputLanguage.value === "markdown" && toolStore.isMarkdownPreview;
 });
 
 const displayedOutput = computed(() => {
@@ -64,7 +70,8 @@ async function copyOutput() {
   const text = displayedOutput.value;
   if (!text) return;
   try {
-    await navigator.clipboard.writeText(text);
+    const asHtml = isPreviewMode.value;
+    await copyContentToClipboard(text, asHtml);
     copied.value = true;
     setTimeout(() => {
       copied.value = false;
@@ -126,12 +133,12 @@ function toggleJsonMinify() {
           variant="ghost"
           size="sm"
           class="h-6 px-1.5 text-xs cursor-pointer hover:bg-muted"
-          @click="renderMarkdown = !renderMarkdown"
-          :title="renderMarkdown ? '查看 Markdown 源码' : '查看渲染视图 (表格/排版)'"
+          @click="toolStore.isMarkdownPreview = !toolStore.isMarkdownPreview"
+          :title="toolStore.isMarkdownPreview ? '查看 Markdown 源码' : '查看渲染视图 (表格/排版)'"
         >
-          <IconCode v-if="renderMarkdown" class="h-3.5 w-3.5 mr-1" />
+          <IconCode v-if="toolStore.isMarkdownPreview" class="h-3.5 w-3.5 mr-1" />
           <IconEye v-else class="h-3.5 w-3.5 mr-1" />
-          <span>{{ renderMarkdown ? "源码" : "预览" }}</span>
+          <span>{{ toolStore.isMarkdownPreview ? "源码" : "预览" }}</span>
         </Button>
 
         <!-- Stop Generating button for LLM Streaming -->
@@ -153,10 +160,15 @@ function toggleJsonMinify() {
           class="h-6 px-2 text-xs cursor-pointer hover:bg-muted"
           :disabled="!toolStore.executionOutput"
           @click="copyOutput"
+          :title="
+            isPreviewMode
+              ? '复制为 HTML 富文本 (可直接粘贴表格至 Word/Excel/微信/飞书)'
+              : '复制为纯文本源码'
+          "
         >
           <IconCheck v-if="copied" class="h-3.5 w-3.5 mr-1 text-green-500" />
           <IconCopy v-else class="h-3.5 w-3.5 mr-1" />
-          <span>{{ copied ? "已复制" : "复制结果" }}</span>
+          <span>{{ copied ? (isPreviewMode ? "已复制 HTML" : "已复制") : "复制结果" }}</span>
         </Button>
       </div>
     </div>
@@ -189,7 +201,7 @@ function toggleJsonMinify() {
       <!-- Output Display (includes streaming text) -->
       <div v-else-if="toolStore.executionOutput" class="h-full relative">
         <MarkdownViewer
-          v-if="outputLanguage === 'markdown' && renderMarkdown"
+          v-if="outputLanguage === 'markdown' && toolStore.isMarkdownPreview"
           :content="displayedOutput"
         />
         <CodeHighlight v-else :code="displayedOutput" :language="outputLanguage" />

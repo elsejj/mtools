@@ -171,7 +171,7 @@ impl SnifferRegistry {
           metadata: json!(meta),
           tags: combined_tags,
           preprocessed_result: selected_preprocessed,
-          recommended_tool_id: "ai-ocr".to_string(),
+          recommended_tool_id,
           candidate_tool_scores: candidate_scores,
           created_at: now,
         }

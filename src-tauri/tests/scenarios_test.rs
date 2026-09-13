@@ -447,3 +447,170 @@ fn test_scenario_10_single_number_priority_arbitration() {
     "Table must contain calculator Chinese format 1230亿"
   );
 }
+
+#[test]
+fn test_scenario_11_quoted_json_string_decoding_and_routing() {
+  let registry = SnifferRegistry::new();
+
+  // 1. 双引号转义的 JSON 字符串
+  let raw_quoted_json = r#""{\"name\":\"mtools\",\"tags\":[\"tauri\",\"vue\"]}""#;
+  let decoded = DecoderPipeline::decode(raw_quoted_json);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    _ => panic!("Expected DecodedOutput::Text"),
+  };
+  assert_eq!(trace, vec!["unquote"]);
+  assert_eq!(actual_text, r#"{"name":"mtools","tags":["tauri","vue"]}"#);
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    raw_quoted_json.to_string(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+  assert_eq!(enriched.recommended_tool_id, "json-formatter");
+  assert!(enriched.tags.contains(&"format-json".to_string()));
+  assert!(enriched.tags.contains(&"decoded-from-unquote".to_string()));
+  let formatted = enriched
+    .preprocessed_result
+    .expect("Must have preprocessed_result")
+    .formatted_text
+    .expect("Must have formatted_text");
+  assert!(formatted.contains(r#""name": "mtools""#));
+
+  // 2. 单引号包裹的 JSON 字符串
+  let raw_single_quoted = r#"'{"user":"alice","active":true}'"#;
+  let decoded2 = DecoderPipeline::decode(raw_single_quoted);
+  let (actual_text2, trace2) = match decoded2 {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    _ => panic!("Expected DecodedOutput::Text"),
+  };
+  assert_eq!(trace2, vec!["unquote"]);
+  assert_eq!(actual_text2, r#"{"user":"alice","active":true}"#);
+
+  let enriched2 = registry.execute(
+    &SniffInput::Text(&actual_text2),
+    raw_single_quoted.to_string(),
+    actual_text2.clone(),
+    trace2,
+    None,
+  );
+  assert_eq!(enriched2.recommended_tool_id, "json-formatter");
+
+  // 3. 引号包裹的 Base64 字符串复合解码
+  let raw_quoted_b64 = r#""eyJhY3Rpb24iOiJxdWVyeSIsImxpbWl0Ijo1MH0=""#;
+  let decoded3 = DecoderPipeline::decode(raw_quoted_b64);
+  let (actual_text3, trace3) = match decoded3 {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    _ => panic!("Expected DecodedOutput::Text"),
+  };
+  assert_eq!(trace3, vec!["unquote", "base64"]);
+  assert_eq!(actual_text3, r#"{"action":"query","limit":50}"#);
+
+  let enriched3 = registry.execute(
+    &SniffInput::Text(&actual_text3),
+    raw_quoted_b64.to_string(),
+    actual_text3.clone(),
+    trace3,
+    None,
+  );
+  assert_eq!(enriched3.recommended_tool_id, "json-formatter");
+  assert!(enriched3.tags.contains(&"decoded-from-unquote".to_string()));
+  assert!(enriched3.tags.contains(&"decoded-from-base64".to_string()));
+}
+
+#[test]
+fn test_scenario_12_multiline_file_paths_auto_reading_and_routing() {
+  use std::io::Write;
+  let registry = SnifferRegistry::new();
+  let temp_dir = std::env::temp_dir();
+  let json_path = temp_dir.join("mtools_scenario_12.json");
+  let other_path = temp_dir.join("mtools_scenario_12.txt");
+
+  let mut f1 = std::fs::File::create(&json_path).unwrap();
+  write!(f1, "{{\"user\":\"bob\",\"score\":99}}").unwrap();
+
+  let mut f2 = std::fs::File::create(&other_path).unwrap();
+  write!(f2, "other text").unwrap();
+
+  // 1. 多行文件路径输入：第1行目录，第2行JSON文件，第3行TXT文件
+  let multiline_input = format!(
+    "{}\n{}\n{}",
+    temp_dir.to_str().unwrap(),
+    json_path.to_str().unwrap(),
+    other_path.to_str().unwrap()
+  );
+
+  let decoded = DecoderPipeline::decode(&multiline_input);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    _ => panic!("Expected DecodedOutput::Text"),
+  };
+  assert_eq!(trace, vec!["file"]);
+  assert_eq!(actual_text, "{\"user\":\"bob\",\"score\":99}");
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    multiline_input.clone(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+  assert_eq!(enriched.recommended_tool_id, "json-formatter");
+  assert!(enriched.tags.contains(&"decoded-from-file".to_string()));
+  assert!(enriched.tags.contains(&"format-json".to_string()));
+
+  let _ = std::fs::remove_file(json_path);
+  let _ = std::fs::remove_file(other_path);
+}
+
+#[test]
+fn test_scenario_13_single_image_file_path_routes_to_ocr_not_calculator() {
+  use std::io::Write;
+  let registry = SnifferRegistry::new();
+  let temp_dir = std::env::temp_dir();
+  let image_path = temp_dir.join("f4400f9cb4e12eee8bfd5162962203f4.jpg");
+
+  // 写入合法的 JPEG 图片文件
+  let mut f = std::fs::File::create(&image_path).unwrap();
+  f.write_all(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46])
+    .unwrap();
+
+  // 模拟带首尾空格的单个图片路径输入
+  let input = format!("  {}  ", image_path.to_str().unwrap());
+
+  // 1. DecoderPass: 自动识别存在的文件并升格为 Image
+  let decoded = DecoderPipeline::decode(&input);
+  let (bytes, mime_type, trace) = match decoded {
+    DecodedOutput::Image {
+      bytes,
+      mime_type,
+      trace,
+    } => (bytes, mime_type, trace),
+    _ => panic!("Expected DecodedOutput::Image for single image file path"),
+  };
+  assert_eq!(mime_type, "image/jpeg");
+  assert_eq!(trace, vec!["file"]);
+
+  // 2. SnifferPass: 输入为 Image，直接命中 ImageSniffer，推荐 ocr-extractor，绝不命中计算器
+  let sniff_input = SniffInput::Image(&bytes);
+  let enriched = registry.execute(&sniff_input, input.clone(), input.clone(), trace, None);
+  assert_eq!(
+    enriched.recommended_tool_id, "ocr-extractor",
+    "Should recommend ocr-extractor"
+  );
+  assert!(
+    enriched.tags.contains(&"image".to_string()),
+    "Tags must contain image"
+  );
+  assert!(
+    !enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "calculator"),
+    "Calculator must NOT be a candidate for image inputs"
+  );
+
+  let _ = std::fs::remove_file(image_path);
+}

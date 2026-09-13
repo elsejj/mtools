@@ -274,6 +274,17 @@ export function calculateToolMatchScore(
           }
         }
       } else if (fmt === "calc") {
+        // Exclude file paths or URLs
+        if (
+          content.startsWith("/") ||
+          content.startsWith("~") ||
+          content.startsWith("file://") ||
+          /^[a-zA-Z]:[\\/]/.test(content) ||
+          /\.(jpg|jpeg|png|webp|gif|bmp|txt|json|md|rs|ts|vue)$/i.test(content)
+        ) {
+          continue;
+        }
+
         const hasDigits = /\d/.test(content);
         const hasOps = /[+\-*/%^×÷]/.test(content);
         const hasUnits = /[万亿千百兆KMGTBPwqybz]/i.test(content);
@@ -311,6 +322,7 @@ export const useToolStore = defineStore("tools", () => {
   const executionError = ref<string | null>(null);
   const executionOutput = ref<string>("");
   const lastSavedFilePath = ref<string | null>(null);
+  const isMarkdownPreview = ref<boolean>(true);
 
   let activeAbortController: AbortController | null = null;
 
@@ -671,6 +683,7 @@ export const useToolStore = defineStore("tools", () => {
     executionError,
     executionOutput,
     lastSavedFilePath,
+    isMarkdownPreview,
 
     // Getters
     activeTool,

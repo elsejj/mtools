@@ -117,6 +117,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       commands::simulate_copy,
       commands::simulate_paste,
+      commands::write_clipboard_html,
       commands::read_clipboard_image_base64,
       commands::fetch_and_process_clipboard,
       commands::process_custom_content,

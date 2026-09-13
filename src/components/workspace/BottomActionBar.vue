@@ -1,18 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useToolStore } from '@/stores/tools';
-import { usePayloadStore } from '@/stores/payload';
-import { useSettingsStore } from '@/stores/settings';
-import { Button } from '@/components/ui/button';
-import {
-  IconCopy,
-  IconCheck,
-  IconArrowBackUp,
-  IconPlayerPlay,
-  IconClock,
-} from '@tabler/icons-vue';
-import { tauriApi } from '@/lib/tauri';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ref, computed } from "vue";
+import { useToolStore } from "@/stores/tools";
+import { usePayloadStore } from "@/stores/payload";
+import { useSettingsStore } from "@/stores/settings";
+import { Button } from "@/components/ui/button";
+import { IconCopy, IconCheck, IconArrowBackUp, IconPlayerPlay, IconClock } from "@tabler/icons-vue";
+import { tauriApi } from "@/lib/tauri";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { copyContentToClipboard, markdownToRichHtml } from "@/lib/clipboard";
 
 const toolStore = useToolStore();
 const payloadStore = usePayloadStore();
@@ -21,16 +16,32 @@ const settingsStore = useSettingsStore();
 const copied = ref(false);
 const pasted = ref(false);
 
+const isMarkdownMode = computed(() => {
+  if (toolStore.activeTool?.type === "cli") return false;
+  if (
+    toolStore.activeTool?.id === "json-formatter" ||
+    toolStore.activeTool?.id === "jwt-inspector"
+  ) {
+    return false;
+  }
+  return true;
+});
+
+const isPreviewMode = computed(() => {
+  return isMarkdownMode.value && toolStore.isMarkdownPreview;
+});
+
 async function handleCopy() {
   if (!toolStore.executionOutput) return;
   try {
-    await navigator.clipboard.writeText(toolStore.executionOutput);
+    const asHtml = isPreviewMode.value;
+    await copyContentToClipboard(toolStore.executionOutput, asHtml);
     copied.value = true;
     setTimeout(() => {
       copied.value = false;
     }, 1500);
   } catch (err) {
-    console.error('Failed to copy to clipboard:', err);
+    console.error("Failed to copy to clipboard:", err);
   }
 }
 
@@ -38,6 +49,9 @@ async function handlePasteBack() {
   if (!toolStore.executionOutput) return;
   try {
     pasted.value = true;
+    const text = toolStore.executionOutput;
+    const html = isPreviewMode.value ? markdownToRichHtml(text) : undefined;
+
     // Minimize or hide window before simulating paste so target window gains focus
     try {
       const appWindow = getCurrentWindow();
@@ -48,11 +62,11 @@ async function handlePasteBack() {
 
     // Give OS focus shift delay (~100ms)
     setTimeout(async () => {
-      await tauriApi.simulatePaste(toolStore.executionOutput);
+      await tauriApi.simulatePaste(text, html);
       pasted.value = false;
     }, 120);
   } catch (err) {
-    console.error('Failed to simulate paste:', err);
+    console.error("Failed to simulate paste:", err);
     pasted.value = false;
   }
 }
@@ -65,7 +79,9 @@ async function handleRerun() {
 </script>
 
 <template>
-  <footer class="flex h-10 shrink-0 items-center justify-between border-t border-border bg-muted/20 px-3 text-xs select-none">
+  <footer
+    class="flex h-10 shrink-0 items-center justify-between border-t border-border bg-muted/20 px-3 text-xs select-none"
+  >
     <!-- Left Actions -->
     <div class="flex items-center space-x-2">
       <Button
@@ -73,10 +89,15 @@ async function handleRerun() {
         class="h-7 text-xs px-2.5 cursor-pointer shadow-2xs"
         :disabled="!toolStore.executionOutput"
         @click="handleCopy"
+        :title="
+          isPreviewMode
+            ? '复制为 HTML 富文本 (可直接粘贴表格至 Word/Excel/微信/飞书)'
+            : '复制为纯文本源码'
+        "
       >
         <IconCheck v-if="copied" class="h-3.5 w-3.5 mr-1 text-green-400" />
         <IconCopy v-else class="h-3.5 w-3.5 mr-1" />
-        <span>{{ copied ? '已复制' : '复制结果' }}</span>
+        <span>{{ copied ? (isPreviewMode ? "已复制 HTML" : "已复制") : "复制结果" }}</span>
       </Button>
 
       <Button
@@ -88,7 +109,7 @@ async function handleRerun() {
         title="将结果直接粘贴回呼出前的活动应用程序"
       >
         <IconArrowBackUp class="h-3.5 w-3.5 mr-1 text-primary" />
-        <span>{{ pasted ? '已回贴...' : '回贴源软件' }}</span>
+        <span>{{ pasted ? "已回贴..." : "回贴源软件" }}</span>
       </Button>
 
       <Button
@@ -115,4 +136,3 @@ async function handleRerun() {
     </div>
   </footer>
 </template>
-
