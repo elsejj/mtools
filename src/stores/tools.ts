@@ -1,5 +1,5 @@
-import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { defineStore } from "pinia";
+import { ref, computed } from "vue";
 import type {
   ToolDefinition,
   ToolScoreItem,
@@ -7,163 +7,165 @@ import type {
   PostActionConfig,
   CliExecuteResponse,
   SaveFileResponse,
-} from '@/types';
-import { tauriApi } from '@/lib/tauri';
-import { executeCodeTool } from '@/lib/engines/codeEngine';
-import { streamLLMCompletion } from '@/lib/engines/llmEngine';
-import { useSettingsStore } from './settings';
-import { usePayloadStore } from './payload';
+} from "@/types";
+import { tauriApi } from "@/lib/tauri";
+import { executeCodeTool } from "@/lib/engines/codeEngine";
+import { streamLLMCompletion } from "@/lib/engines/llmEngine";
+import { useSettingsStore } from "./settings";
+import { usePayloadStore } from "./payload";
 
 export const DEFAULT_TOOLS: ToolDefinition[] = [
   {
-    id: 'json-formatter',
-    name: 'JSON 格式化',
-    icon: 'IconCode',
-    description: '格式化并高亮 JSON 字符串，验证语法有效性',
-    category: 'developer',
+    id: "json-formatter",
+    name: "JSON 格式化",
+    icon: "IconCode",
+    description: "格式化并高亮 JSON 字符串，验证语法有效性",
+    category: "developer",
     isCustom: false,
     enabled: true,
     sortOrder: 1,
     matcher: {
-      acceptedTypes: ['text'],
-      requiredFormats: ['json'],
+      acceptedTypes: ["text"],
+      requiredFormats: ["json"],
       basePriority: 10,
     },
-    type: 'code',
-    postAction: { type: 'none' },
+    type: "code",
+    postAction: { type: "none" },
     codeConfig: {
-      script: '',
-      outputType: 'json',
+      script: "",
+      outputType: "json",
     },
   },
   {
-    id: 'jwt-inspector',
-    name: 'JWT 解析',
-    icon: 'IconKey',
-    description: '解析 JWT Token 结构，查看 Header 与 Payload 声明',
-    category: 'developer',
+    id: "jwt-inspector",
+    name: "JWT 解析",
+    icon: "IconKey",
+    description: "解析 JWT Token 结构，查看 Header 与 Payload 声明",
+    category: "developer",
     isCustom: false,
     enabled: true,
     sortOrder: 2,
     matcher: {
-      acceptedTypes: ['text'],
-      requiredFormats: ['jwt'],
+      acceptedTypes: ["text"],
+      requiredFormats: ["jwt"],
       basePriority: 10,
     },
-    type: 'code',
-    postAction: { type: 'none' },
+    type: "code",
+    postAction: { type: "none" },
     codeConfig: {
-      script: '',
-      outputType: 'json',
+      script: "",
+      outputType: "json",
     },
   },
   {
-    id: 'timestamp-converter',
-    name: '时间戳转换',
-    icon: 'IconClock',
-    description: 'Unix 秒/毫秒时间戳与本地可读时间互转',
-    category: 'developer',
+    id: "timestamp-converter",
+    name: "时间戳转换",
+    icon: "IconClock",
+    description: "Unix 秒/毫秒时间戳与本地可读时间互转",
+    category: "developer",
     isCustom: false,
     enabled: true,
     sortOrder: 3,
     matcher: {
-      acceptedTypes: ['text'],
-      requiredFormats: ['time'],
+      acceptedTypes: ["text"],
+      requiredFormats: ["time"],
       basePriority: 10,
     },
-    type: 'code',
-    postAction: { type: 'none' },
+    type: "code",
+    postAction: { type: "none" },
     codeConfig: {
-      script: '',
-      outputType: 'json',
+      script: "",
+      outputType: "json",
     },
   },
   {
-    id: 'url-codec',
-    name: 'URL 编解码',
-    icon: 'IconLink',
-    description: 'URL Encode/Decode 与 Query 参数结构化解析',
-    category: 'developer',
+    id: "url-codec",
+    name: "URL 编解码",
+    icon: "IconLink",
+    description: "URL Encode/Decode 与 Query 参数结构化解析",
+    category: "developer",
     isCustom: false,
     enabled: true,
     sortOrder: 4,
     matcher: {
-      acceptedTypes: ['text'],
-      requiredFormats: ['url'],
+      acceptedTypes: ["text"],
+      requiredFormats: ["url"],
       basePriority: 10,
     },
-    type: 'code',
-    postAction: { type: 'none' },
+    type: "code",
+    postAction: { type: "none" },
     codeConfig: {
-      script: '',
-      outputType: 'json',
+      script: "",
+      outputType: "json",
     },
   },
   {
-    id: 'ocr-extractor',
-    name: 'OCR 识图提取',
-    icon: 'IconScan',
-    description: '多模态 AI 识别并提取图片中的所有排版文字',
-    category: 'ai',
+    id: "ocr-extractor",
+    name: "OCR 识图提取",
+    icon: "IconScan",
+    description: "多模态 AI 识别并提取图片中的所有排版文字",
+    category: "ai",
     isCustom: false,
     enabled: true,
     sortOrder: 5,
     matcher: {
-      acceptedTypes: ['image'],
+      acceptedTypes: ["image"],
       basePriority: 10,
     },
-    type: 'llm',
-    postAction: { type: 'copy_to_clipboard' },
+    type: "llm",
+    postAction: { type: "copy_to_clipboard" },
     llmConfig: {
       useSystemProvider: true,
-      systemPrompt: '请精准提取图片中的所有文字，忠实保留原始分段与排版格式，直接输出文字，无需寒暄。',
-      userPromptTemplate: '请提取该图片中的全部文字内容：',
+      systemPrompt:
+        "请精准提取图片中的所有文字，忠实保留原始分段与排版格式，直接输出文字，无需寒暄。",
+      userPromptTemplate: "请提取该图片中的全部文字内容：",
       stream: true,
       temperature: 0.1,
     },
   },
   {
-    id: 'llm-translate',
-    name: 'AI 翻译与润色',
-    icon: 'IconLanguage',
-    description: '中英双语即时翻译与文案表达润色',
-    category: 'ai',
+    id: "llm-translate",
+    name: "AI 翻译与润色",
+    icon: "IconLanguage",
+    description: "中英双语即时翻译与文案表达润色",
+    category: "ai",
     isCustom: false,
     enabled: true,
     sortOrder: 6,
     matcher: {
-      acceptedTypes: ['text'],
-      basePriority: 70,
+      acceptedTypes: ["text"],
+      basePriority: 35,
     },
-    type: 'llm',
-    postAction: { type: 'none' },
+    type: "llm",
+    postAction: { type: "none" },
     llmConfig: {
       useSystemProvider: true,
-      systemPrompt: '你是一位精通多语言翻译与专业文案润色的大师。若用户输入中文，请翻译为地道流利的英文；若输入为其他语言，请翻译为通顺规范的中文。直接输出翻译结果。',
-      userPromptTemplate: '{{input}}',
+      systemPrompt:
+        "你是一位精通多语言翻译与专业文案润色的大师。若用户输入中文，请翻译为地道流利的英文；若输入为其他语言，请翻译为通顺规范的中文。直接输出翻译结果。",
+      userPromptTemplate: "{{input}}",
       stream: true,
       temperature: 0.3,
     },
   },
   {
-    id: 'cli-runner',
-    name: '外部 CLI',
-    icon: 'IconTerminal2',
-    description: '通过管道将输入数据传递给本地命令行工具 (如 jq/cat)',
-    category: 'utilities',
+    id: "cli-runner",
+    name: "外部 CLI",
+    icon: "IconTerminal2",
+    description: "通过管道将输入数据传递给本地命令行工具 (如 jq/cat)",
+    category: "utilities",
     isCustom: false,
     enabled: true,
     sortOrder: 7,
     matcher: {
-      acceptedTypes: ['text'],
+      acceptedTypes: ["text"],
       basePriority: 20,
     },
-    type: 'cli',
-    postAction: { type: 'none' },
+    type: "cli",
+    postAction: { type: "none" },
     cliConfig: {
-      command: 'cat',
+      command: "cat",
       args: [],
-      stdinMode: 'pipe',
+      stdinMode: "pipe",
       timeoutMs: 5000,
     },
   },
@@ -175,7 +177,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
 export function calculateToolMatchScore(
   tool: ToolDefinition,
   sample: string,
-  sampleType: 'text' | 'image'
+  sampleType: "text" | "image",
 ): number {
   if (!tool.matcher.acceptedTypes.includes(sampleType)) {
     return 0;
@@ -205,10 +207,10 @@ export function calculateToolMatchScore(
   if (tool.matcher.requiredFormats && tool.matcher.requiredFormats.length > 0) {
     let formatMatched = false;
     for (const fmt of tool.matcher.requiredFormats) {
-      if (fmt === 'json') {
+      if (fmt === "json") {
         if (
-          (content.startsWith('{') && content.endsWith('}')) ||
-          (content.startsWith('[') && content.endsWith(']'))
+          (content.startsWith("{") && content.endsWith("}")) ||
+          (content.startsWith("[") && content.endsWith("]"))
         ) {
           try {
             JSON.parse(content);
@@ -216,22 +218,38 @@ export function calculateToolMatchScore(
             formatMatched = true;
           } catch {}
         }
-      } else if (fmt === 'url') {
-        if (content.startsWith('http://') || content.startsWith('https://') || content.startsWith('ftp://')) {
+      } else if (fmt === "url") {
+        if (
+          content.startsWith("http://") ||
+          content.startsWith("https://") ||
+          content.startsWith("ftp://")
+        ) {
           score += 80;
           formatMatched = true;
         }
-      } else if (fmt === 'jwt') {
-        const parts = content.split('.');
+      } else if (fmt === "jwt") {
+        const parts = content.split(".");
         if (parts.length === 3 && parts[0].length >= 5 && parts[1].length >= 5) {
           score += 85;
           formatMatched = true;
         }
-      } else if (fmt === 'time') {
+      } else if (fmt === "time") {
         const num = Number(content);
-        if (!isNaN(num) && (content.length === 10 || content.length === 13)) {
-          score += 80;
+        if (
+          !isNaN(num) &&
+          (content.length === 10 || content.length === 13 || content.length === 16)
+        ) {
+          score += 85;
           formatMatched = true;
+        } else {
+          const datePattern = /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/;
+          if (
+            datePattern.test(content) &&
+            !isNaN(new Date(content.replace(/\//g, "-")).getTime())
+          ) {
+            score += 85;
+            formatMatched = true;
+          }
         }
       }
     }
@@ -244,14 +262,14 @@ export function calculateToolMatchScore(
   return Math.min(Math.max(score, 0), 100);
 }
 
-export const useToolStore = defineStore('tools', () => {
+export const useToolStore = defineStore("tools", () => {
   const tools = ref<ToolDefinition[]>(DEFAULT_TOOLS);
-  const activeToolId = ref<string>('json-formatter');
+  const activeToolId = ref<string>("json-formatter");
   const editingTool = ref<ToolDefinition | null>(null);
   const isExecuting = ref<boolean>(false);
   const isStreaming = ref<boolean>(false);
   const executionError = ref<string | null>(null);
-  const executionOutput = ref<string>('');
+  const executionOutput = ref<string>("");
   const lastSavedFilePath = ref<string | null>(null);
 
   let activeAbortController: AbortController | null = null;
@@ -289,7 +307,7 @@ export const useToolStore = defineStore('tools', () => {
     const payloadStore = usePayloadStore();
     if (payloadStore.currentPayload) {
       const p = payloadStore.currentPayload;
-      const sampleType = p.payloadType === 'image' ? 'image' : 'text';
+      const sampleType = p.payloadType === "image" ? "image" : "text";
       for (const t of tools.value) {
         if (!scoreMap.has(t.id)) {
           scoreMap.set(t.id, calculateToolMatchScore(t, p.actualContent, sampleType));
@@ -339,7 +357,7 @@ export const useToolStore = defineStore('tools', () => {
         tools.value = Array.from(toolMap.values()).sort((a, b) => a.sortOrder - b.sortOrder);
       }
     } catch (err) {
-      console.warn('Failed to load tools from database, using defaults:', err);
+      console.warn("Failed to load tools from database, using defaults:", err);
     }
   }
 
@@ -353,7 +371,7 @@ export const useToolStore = defineStore('tools', () => {
     try {
       await tauriApi.saveToolConfig(tool);
     } catch (err) {
-      console.error('Failed to persist tool to database:', err);
+      console.error("Failed to persist tool to database:", err);
     }
   }
 
@@ -362,7 +380,7 @@ export const useToolStore = defineStore('tools', () => {
     try {
       await tauriApi.deleteToolConfig(toolId);
     } catch (err) {
-      console.error('Failed to delete tool from database:', err);
+      console.error("Failed to delete tool from database:", err);
     }
     if (activeToolId.value === toolId && tools.value.length > 0) {
       activeToolId.value = tools.value[0].id;
@@ -377,15 +395,15 @@ export const useToolStore = defineStore('tools', () => {
     }
   }
 
-  async function reorderTool(toolId: string, direction: 'up' | 'down') {
+  async function reorderTool(toolId: string, direction: "up" | "down") {
     const idx = tools.value.findIndex((t) => t.id === toolId);
     if (idx < 0) return;
 
-    if (direction === 'up' && idx > 0) {
+    if (direction === "up" && idx > 0) {
       const temp = tools.value[idx];
       tools.value[idx] = tools.value[idx - 1];
       tools.value[idx - 1] = temp;
-    } else if (direction === 'down' && idx < tools.value.length - 1) {
+    } else if (direction === "down" && idx < tools.value.length - 1) {
       const temp = tools.value[idx];
       tools.value[idx] = tools.value[idx + 1];
       tools.value[idx + 1] = temp;
@@ -406,7 +424,7 @@ export const useToolStore = defineStore('tools', () => {
     try {
       const list = JSON.parse(jsonStr);
       if (!Array.isArray(list)) {
-        return { count: 0, error: '导入的 JSON 必须是工具数组' };
+        return { count: 0, error: "导入的 JSON 必须是工具数组" };
       }
 
       let count = 0;
@@ -443,7 +461,11 @@ export const useToolStore = defineStore('tools', () => {
     if (candidateScores && candidateScores.length > 0) {
       const sorted = [...candidateScores].sort((a, b) => b.score - a.score);
       const highest = sorted[0];
-      if (highest && highest.score > 0 && tools.value.some((t) => t.id === highest.toolId && t.enabled)) {
+      if (
+        highest &&
+        highest.score > 0 &&
+        tools.value.some((t) => t.id === highest.toolId && t.enabled)
+      ) {
         setActiveTool(highest.toolId);
         return;
       }
@@ -451,7 +473,7 @@ export const useToolStore = defineStore('tools', () => {
     const payloadStore = usePayloadStore();
     if (payloadStore.currentPayload) {
       const p = payloadStore.currentPayload;
-      const sampleType = p.payloadType === 'image' ? 'image' : 'text';
+      const sampleType = p.payloadType === "image" ? "image" : "text";
       const best = tools.value
         .filter((t) => t.enabled)
         .map((t) => ({
@@ -478,24 +500,24 @@ export const useToolStore = defineStore('tools', () => {
   async function handlePostAction(
     postAction: PostActionConfig,
     content: string,
-    toolName: string
+    toolName: string,
   ): Promise<{ savedPath?: string; copied?: boolean }> {
     const result: { savedPath?: string; copied?: boolean } = {};
     const settingsStore = useSettingsStore();
 
-    if (postAction.type === 'copy_to_clipboard' || settingsStore.settings.autoCopyResult) {
+    if (postAction.type === "copy_to_clipboard" || settingsStore.settings.autoCopyResult) {
       try {
         await navigator.clipboard.writeText(content);
         result.copied = true;
       } catch (e) {
-        console.error('PostAction: Failed to copy to clipboard', e);
+        console.error("PostAction: Failed to copy to clipboard", e);
       }
     }
 
-    if (postAction.type === 'save_to_file' && postAction.saveConfig) {
+    if (postAction.type === "save_to_file" && postAction.saveConfig) {
       try {
-        const ext = postAction.saveConfig.extension || 'txt';
-        const dir = postAction.saveConfig.directory || toolName.toLowerCase().replace(/\s+/g, '_');
+        const ext = postAction.saveConfig.extension || "txt";
+        const dir = postAction.saveConfig.directory || toolName.toLowerCase().replace(/\s+/g, "_");
         const saveRes: SaveFileResponse = await tauriApi.saveContentToFile({
           targetDirectory: dir,
           extension: ext,
@@ -504,7 +526,7 @@ export const useToolStore = defineStore('tools', () => {
         result.savedPath = saveRes.fullPath;
         lastSavedFilePath.value = saveRes.fullPath;
       } catch (e) {
-        console.error('PostAction: Failed to save file', e);
+        console.error("PostAction: Failed to save file", e);
       }
     }
     return result;
@@ -512,28 +534,37 @@ export const useToolStore = defineStore('tools', () => {
 
   async function executeTool(payload: EnrichedPayload): Promise<string> {
     const tool = activeTool.value;
-    if (!tool) return '';
+    if (!tool) return "";
 
     stopExecution();
 
     isExecuting.value = true;
     executionError.value = null;
     lastSavedFilePath.value = null;
-    executionOutput.value = '';
+    executionOutput.value = "";
     const startTime = Date.now();
 
-    try {
-      let output = '';
+    // Fast-fail: verify acceptedTypes match
+    if (!tool.matcher.acceptedTypes.includes(payload.payloadType)) {
+      isExecuting.value = false;
+      const toolTypeName = tool.matcher.acceptedTypes.includes("image") ? "图片" : "文本";
+      const payloadTypeName = payload.payloadType === "image" ? "图片" : "文本";
+      executionError.value = `该工具仅支持处理${toolTypeName}，无法处理当前${payloadTypeName}载荷`;
+      return "";
+    }
 
-      if (tool.type === 'code') {
+    try {
+      let output = "";
+
+      if (tool.type === "code") {
         output = executeCodeTool(tool.id, payload.actualContent, payload.preprocessedResult);
         executionOutput.value = output;
-      } else if (tool.type === 'cli' && tool.cliConfig) {
+      } else if (tool.type === "cli" && tool.cliConfig) {
         const cliRes: CliExecuteResponse = await tauriApi.executeCliCommand({
           command: tool.cliConfig.command,
           args: tool.cliConfig.args || [],
           workingDir: tool.cliConfig.workingDir,
-          stdinContent: tool.cliConfig.stdinMode === 'pipe' ? payload.actualContent : undefined,
+          stdinContent: tool.cliConfig.stdinMode === "pipe" ? payload.actualContent : undefined,
           envVars: tool.cliConfig.env,
           timeoutMs: tool.cliConfig.timeoutMs || 5000,
         });
@@ -542,7 +573,7 @@ export const useToolStore = defineStore('tools', () => {
           executionError.value = `CLI 执行失败 (退出码 ${cliRes.exitCode}): ${cliRes.stderr}`;
         }
         executionOutput.value = output;
-      } else if (tool.type === 'llm') {
+      } else if (tool.type === "llm") {
         const settingsStore = useSettingsStore();
         activeAbortController = new AbortController();
         isStreaming.value = true;
@@ -561,25 +592,28 @@ export const useToolStore = defineStore('tools', () => {
       const postActionResult = await handlePostAction(tool.postAction, output, tool.name);
 
       const durationMs = Date.now() - startTime;
-      await tauriApi.addHistoryRecord({
-        toolId: tool.id,
-        toolName: tool.name,
-        payloadType: payload.payloadType,
-        inputSummary: payload.actualContent.slice(0, 100),
-        inputText: payload.actualContent,
-        inputImagePath: (payload.metadata as any)?.localCachePath,
-        outputContent: output,
-        postActionType: tool.postAction.type,
-        outputFilePath: postActionResult.savedPath,
-        status: executionError.value ? 'error' : 'success',
-        durationMs,
-      }).catch((e) => console.warn('Failed to record history item:', e));
+      await tauriApi
+        .addHistoryRecord({
+          toolId: tool.id,
+          toolName: tool.name,
+          payloadType: payload.payloadType,
+          inputSummary: payload.actualContent.slice(0, 100),
+          inputText: payload.actualContent,
+          inputImagePath: (payload.metadata as any)?.localCachePath,
+          outputContent: output,
+          postActionType: tool.postAction.type,
+          outputFilePath: postActionResult.savedPath,
+          status: executionError.value ? "error" : "success",
+          durationMs,
+        })
+        .catch((e) => console.warn("Failed to record history item:", e));
 
       return output;
     } catch (err: any) {
-      executionError.value = err?.message || String(err);
-      console.error('Execution error:', err);
-      return '';
+      const msg = err?.message || String(err);
+      executionError.value = msg.length > 200 ? `${msg.slice(0, 200)}...` : msg;
+      console.error("Execution error:", err);
+      return "";
     } finally {
       isExecuting.value = false;
       isStreaming.value = false;

@@ -144,10 +144,20 @@ impl SnifferRegistry {
       }
       SniffInput::Image(bytes) => {
         let local_path = image_local_cache_path.unwrap_or_default();
+        let mime_type =
+          crate::decoder::detect_image_mime(bytes).unwrap_or_else(|| "image/png".to_string());
+        let (width, height) = if bytes.len() >= 24 && &bytes[0..8] == b"\x89PNG\r\n\x1a\n" {
+          (
+            u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]),
+            u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]),
+          )
+        } else {
+          (0, 0)
+        };
         let meta = crate::models::ImageMetadata {
-          width: 0,
-          height: 0,
-          mime_type: "image/png".to_string(),
+          width,
+          height,
+          mime_type,
           byte_size: bytes.len(),
           local_cache_path: local_path,
           decoding_trace,

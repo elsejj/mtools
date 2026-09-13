@@ -215,7 +215,44 @@ fn test_scenario_5_natural_language_auto_routing_to_llm_translate() {
     enriched
       .candidate_tool_scores
       .iter()
-      .any(|s| s.tool_id == "llm-translate" && s.score >= 80.0),
-    "llm-translate candidate score should be >= 80"
+      .any(|s| s.tool_id == "llm-translate" && s.score >= 60.0),
+    "llm-translate candidate score should be >= 60"
+  );
+}
+
+#[test]
+fn test_scenario_6_date_string_auto_routing_to_timestamp_converter() {
+  let registry = SnifferRegistry::new();
+  let text = "2024-1-2";
+
+  let decoded = DecoderPipeline::decode(text);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    DecodedOutput::PassThrough => (text.to_string(), Vec::new()),
+    _ => panic!("Expected text or passthrough decoded output"),
+  };
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    text.to_string(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+
+  assert_eq!(
+    enriched.recommended_tool_id, "timestamp-converter",
+    "Date string '2024-1-2' must prioritize timestamp-converter over translation"
+  );
+  assert!(
+    enriched.tags.contains(&"format-date".to_string()),
+    "Tags must include format-date"
+  );
+  assert!(
+    enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "timestamp-converter" && s.score >= 85.0),
+    "timestamp-converter score must be >= 85"
   );
 }

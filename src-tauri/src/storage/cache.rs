@@ -33,9 +33,8 @@ pub fn save_image_cache(data_dir: &Path, bytes: &[u8]) -> Result<String, String>
 
   fs::write(&file_path, bytes).map_err(|e| format!("Failed to write cache image: {}", e))?;
 
-  // 返回相对路径，便于移动与跨设备展示
-  let rel_path = format!("cache/images/{}/{}", month_dir_name, final_filename);
-  Ok(rel_path)
+  let full_path = file_path.to_string_lossy().to_string();
+  Ok(full_path)
 }
 
 /// 统计图片缓存的占用大小与文件总数

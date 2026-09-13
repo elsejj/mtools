@@ -37,7 +37,7 @@ impl ContentSniffer for TextSniffer {
 
     SniffOutput {
       matched: true,
-      confidence: 0.85,
+      confidence: 0.65, // 通用文本保底置信度，低于任何特定命中格式 (0.85 ~ 0.95)
       tags: vec!["format-text".to_string(), "natural-language".to_string()],
       preprocessed_text: None,
       suggested_tool_id: Some("llm-translate".to_string()),
