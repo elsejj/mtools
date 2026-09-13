@@ -1,3 +1,4 @@
+use crate::sniffer::builtin::calc::{format_chinese, format_english};
 use crate::sniffer::{ContentSniffer, SniffInput, SniffOutput};
 use chrono::{DateTime, Local, TimeZone, Utc};
 
@@ -12,6 +13,7 @@ fn generate_markdown_table(
   ms: i64,
   python_float: &str,
   subsecond_str: Option<&str>,
+  calc_units: Option<(&str, &str)>,
 ) -> String {
   let local_str = match subsecond_str {
     Some(sub) => format!("{}.{}", local_dt.format("%Y-%m-%d %H:%M:%S"), sub),
@@ -23,7 +25,7 @@ fn generate_markdown_table(
   };
   let iso_str = utc_dt.to_rfc3339();
 
-  format!(
+  let mut table = format!(
     "| 格式 / 属性 | 数值 / 结果 |\n\
      | :--- | :--- |\n\
      | **原始输入 (Input)** | `{}` |\n\
@@ -34,7 +36,17 @@ fn generate_markdown_table(
      | **毫秒级时间戳 (ms)** | `{}` |\n\
      | **Python 浮点时间戳 (s)** | `{}` |\n",
     input, local_str, utc_str, iso_str, sec, ms, python_float
-  )
+  );
+
+  if let Some((en, cn)) = calc_units {
+    table.push_str(&format!(
+      "| **英语习惯 (EN)** | {} |\n\
+       | **中文习惯 (CN)** | {} |\n",
+      en, cn
+    ));
+  }
+
+  table
 }
 
 impl ContentSniffer for TimestampSniffer {
@@ -60,8 +72,8 @@ impl ContentSniffer for TimestampSniffer {
       _ => return SniffOutput::default(),
     };
 
-    // 1. 纯数字时间戳探测 (10位秒 或 13位毫秒 或 16位微秒)
-    if text.chars().all(|c| c.is_ascii_digit()) {
+    // 1. 纯数字时间戳探测 (<=11位秒, 12~14位毫秒, 15~17位微秒)
+    if text.chars().all(|c| c.is_ascii_digit()) && text.len() >= 9 && text.len() <= 19 {
       if let Ok(num) = text.parse::<i64>() {
         let (dt, sec, ms, python_float, sub_str): (
           Option<DateTime<Utc>>,
@@ -69,7 +81,7 @@ impl ContentSniffer for TimestampSniffer {
           i64,
           String,
           Option<String>,
-        ) = if text.len() == 10 {
+        ) = if text.len() <= 11 {
           (
             Utc.timestamp_opt(num, 0).single(),
             num,
@@ -77,7 +89,7 @@ impl ContentSniffer for TimestampSniffer {
             format!("{}.0", num),
             None,
           )
-        } else if text.len() == 13 {
+        } else if text.len() <= 14 {
           let sec = num / 1000;
           let sub = (num % 1000) as u32;
           let py = if sub == 0 {
@@ -91,7 +103,7 @@ impl ContentSniffer for TimestampSniffer {
             None
           };
           (Utc.timestamp_millis_opt(num).single(), sec, num, py, sub_s)
-        } else if text.len() == 16 {
+        } else if text.len() <= 17 {
           let sec = num / 1_000_000;
           let sub = (num % 1_000_000) as u32;
           let py = if sub == 0 {
@@ -117,6 +129,8 @@ impl ContentSniffer for TimestampSniffer {
 
         if let Some(utc_dt) = dt {
           let local_dt: DateTime<Local> = DateTime::from(utc_dt);
+          let en = format_english(num as f64);
+          let cn = format_chinese(num as f64);
           let formatted = generate_markdown_table(
             text,
             &local_dt,
@@ -125,6 +139,7 @@ impl ContentSniffer for TimestampSniffer {
             ms,
             &python_float,
             sub_str.as_deref(),
+            Some((&en, &cn)),
           );
 
           let mut metadata = serde_json::Map::new();
@@ -136,7 +151,7 @@ impl ContentSniffer for TimestampSniffer {
 
           return SniffOutput {
             matched: true,
-            confidence: 0.90,
+            confidence: 0.92,
             tags: vec!["format-timestamp".to_string()],
             preprocessed_text: Some(formatted),
             suggested_tool_id: Some("timestamp-converter".to_string()),
@@ -166,9 +181,20 @@ impl ContentSniffer for TimestampSniffer {
 
         if let Some(utc_dt) = Utc.timestamp_opt(sec, nanos).single() {
           let local_dt: DateTime<Local> = DateTime::from(utc_dt);
+          let val = text.parse::<f64>().unwrap_or(sec as f64);
+          let en = format_english(val);
+          let cn = format_chinese(val);
           let ms = utc_dt.timestamp_millis();
-          let formatted =
-            generate_markdown_table(text, &local_dt, &utc_dt, sec, ms, text, Some(frac_str));
+          let formatted = generate_markdown_table(
+            text,
+            &local_dt,
+            &utc_dt,
+            sec,
+            ms,
+            text,
+            Some(frac_str),
+            Some((&en, &cn)),
+          );
 
           let mut metadata = serde_json::Map::new();
           metadata.insert("timestamp".to_string(), sec.into());
@@ -213,8 +239,16 @@ impl ContentSniffer for TimestampSniffer {
           None
         };
 
-        let formatted =
-          generate_markdown_table(text, &local_dt, &utc_dt, sec, ms, &py, sub_s.as_deref());
+        let formatted = generate_markdown_table(
+          text,
+          &local_dt,
+          &utc_dt,
+          sec,
+          ms,
+          &py,
+          sub_s.as_deref(),
+          None,
+        );
 
         let mut metadata = serde_json::Map::new();
         metadata.insert("timestamp".to_string(), sec.into());
@@ -282,7 +316,7 @@ impl ContentSniffer for TimestampSniffer {
                     let ms = local_dt.timestamp_millis();
                     let py = format!("{}.0", sec);
                     let formatted =
-                      generate_markdown_table(text, &local_dt, &utc_dt, sec, ms, &py, None);
+                      generate_markdown_table(text, &local_dt, &utc_dt, sec, ms, &py, None, None);
 
                     let mut metadata = serde_json::Map::new();
                     metadata.insert("timestamp".to_string(), sec.into());

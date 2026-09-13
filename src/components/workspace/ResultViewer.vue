@@ -31,7 +31,10 @@ const renderMarkdown = ref(true);
 
 const outputLanguage = computed(() => {
   if (toolStore.activeTool?.type === "cli") return "bash";
-  if (toolStore.activeTool?.id === "timestamp-converter") {
+  if (
+    toolStore.activeTool?.id === "timestamp-converter" ||
+    toolStore.activeTool?.id === "calculator"
+  ) {
     return "markdown";
   }
   if (

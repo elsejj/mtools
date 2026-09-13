@@ -47,6 +47,7 @@ impl SnifferRegistry {
     registry.register(Box::new(builtin::json::JsonSniffer::default()));
     registry.register(Box::new(builtin::url::UrlSniffer::default()));
     registry.register(Box::new(builtin::jwt::JwtSniffer::default()));
+    registry.register(Box::new(builtin::calc::CalculatorSniffer::default()));
     registry.register(Box::new(builtin::time::TimestampSniffer::default()));
     registry.register(Box::new(builtin::image::ImageSniffer::default()));
     registry.register(Box::new(builtin::text::TextSniffer::default()));

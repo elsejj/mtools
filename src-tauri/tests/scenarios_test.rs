@@ -308,3 +308,142 @@ fn test_scenario_8_python_float_timestamp_auto_routing() {
     "Formatted text must contain markdown table with python float timestamp"
   );
 }
+
+#[test]
+fn test_scenario_9_calculator_unit_expression_routing() {
+  let registry = SnifferRegistry::new();
+  let text = "1K + 1万+1w";
+
+  let decoded = DecoderPipeline::decode(text);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    DecodedOutput::PassThrough => (text.to_string(), Vec::new()),
+    _ => panic!("Expected text or passthrough decoded output"),
+  };
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    text.to_string(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+
+  assert_eq!(
+    enriched.recommended_tool_id, "calculator",
+    "Expression '1K + 1万+1w' must route to calculator"
+  );
+  assert!(
+    enriched.tags.contains(&"format-calc".to_string()),
+    "Tags must include format-calc"
+  );
+  assert!(
+    enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "calculator" && s.score >= 85.0),
+    "calculator score must be >= 85"
+  );
+
+  let preprocessed = enriched
+    .preprocessed_result
+    .expect("Must have preprocessed_result for calculator");
+  assert_eq!(preprocessed.suggested_output_type, "markdown");
+  let table = preprocessed.formatted_text.as_ref().unwrap();
+  assert!(
+    table.contains("| **精确值 (Exact)** | 21000 |"),
+    "Table must contain exact value 21000"
+  );
+  assert!(
+    table.contains("| **英语习惯 (EN)** | 21K |"),
+    "Table must contain English format 21K"
+  );
+  assert!(
+    table.contains("| **中文习惯 (CN)** | 2.1万 |"),
+    "Table must contain Chinese format 2.1万"
+  );
+}
+
+#[test]
+fn test_scenario_10_single_number_priority_arbitration() {
+  let registry = SnifferRegistry::new();
+  let text = "123000000000";
+
+  let decoded = DecoderPipeline::decode(text);
+  let (actual_text, trace) = match decoded {
+    DecodedOutput::Text { text, trace } => (text, trace),
+    DecodedOutput::PassThrough => (text.to_string(), Vec::new()),
+    _ => panic!("Expected text or passthrough decoded output"),
+  };
+
+  let enriched = registry.execute(
+    &SniffInput::Text(&actual_text),
+    text.to_string(),
+    actual_text.clone(),
+    trace,
+    None,
+  );
+
+  // #1 Must be timestamp-converter
+  assert_eq!(
+    enriched.recommended_tool_id, "timestamp-converter",
+    "Single number '123000000000' must prioritize timestamp-converter"
+  );
+
+  // Check scores order: timestamp-converter (>= 90) > calculator (>= 80) > llm-translate (>= 60)
+  let time_score = enriched
+    .candidate_tool_scores
+    .iter()
+    .find(|s| s.tool_id == "timestamp-converter")
+    .map(|s| s.score)
+    .unwrap_or(0.0);
+  let calc_score = enriched
+    .candidate_tool_scores
+    .iter()
+    .find(|s| s.tool_id == "calculator")
+    .map(|s| s.score)
+    .unwrap_or(0.0);
+  let translate_score = enriched
+    .candidate_tool_scores
+    .iter()
+    .find(|s| s.tool_id == "llm-translate")
+    .map(|s| s.score)
+    .unwrap_or(0.0);
+
+  assert!(
+    time_score >= 90.0,
+    "timestamp-converter score must be >= 90, got {}",
+    time_score
+  );
+  assert!(
+    calc_score >= 80.0,
+    "calculator score must be >= 80, got {}",
+    calc_score
+  );
+  assert!(
+    translate_score >= 60.0 && translate_score < calc_score,
+    "translate score must be between 60 and calc_score, got {}",
+    translate_score
+  );
+  assert!(
+    time_score > calc_score && calc_score > translate_score,
+    "Priority must strictly be timestamp-converter > calculator > llm-translate"
+  );
+
+  let preprocessed = enriched
+    .preprocessed_result
+    .expect("Must have preprocessed_result for timestamp-converter");
+  let table = preprocessed.formatted_text.as_ref().unwrap();
+  assert!(
+    table.contains("| **秒级时间戳 (s)** | `123000000` |"),
+    "Table must contain timestamp seconds"
+  );
+  assert!(
+    table.contains("| **英语习惯 (EN)** | 123G |"),
+    "Table must contain calculator English format 123G"
+  );
+  assert!(
+    table.contains("| **中文习惯 (CN)** | 1230亿 |"),
+    "Table must contain calculator Chinese format 1230亿"
+  );
+}

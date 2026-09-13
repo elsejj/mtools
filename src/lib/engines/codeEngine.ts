@@ -134,6 +134,44 @@ export function inspectJwt(token: string): string {
   return JSON.stringify(result, null, 2);
 }
 
+// 格式化精确值：大于等于1最多保留3位小数，小于1最多保留7位小数，均去除末尾的0
+export function formatExactNumber(val: number): string {
+  if (isNaN(val) || !isFinite(val)) return String(val);
+  const abs = Math.abs(val);
+  let s = abs >= 1 ? val.toFixed(3) : val.toFixed(7);
+  if (s.includes(".")) s = s.replace(/\.?0+$/, "");
+  return s;
+}
+
+// 格式化英语习惯：以 K M G T P 等为单位，保留最多3位小数，去除末尾的0
+export function formatEnglishNumber(val: number): string {
+  if (isNaN(val) || !isFinite(val)) return String(val);
+  const sign = val < 0 ? "-" : "";
+  const abs = Math.abs(val);
+  const fmt = (n: number, u: string) => `${sign}${n.toFixed(3).replace(/\.?0+$/, "")}${u}`;
+
+  if (abs >= 1e15) return fmt(abs / 1e15, "P");
+  if (abs >= 1e12) return fmt(abs / 1e12, "T");
+  if (abs >= 1e9) return fmt(abs / 1e9, "G");
+  if (abs >= 1e6) return fmt(abs / 1e6, "M");
+  if (abs >= 1e3) return fmt(abs / 1e3, "K");
+  return formatExactNumber(val);
+}
+
+// 格式化中文习惯：以 千/万/亿/万亿 等为单位，保留最多3位小数，去除末尾的0
+export function formatChineseNumber(val: number): string {
+  if (isNaN(val) || !isFinite(val)) return String(val);
+  const sign = val < 0 ? "-" : "";
+  const abs = Math.abs(val);
+  const fmt = (n: number, u: string) => `${sign}${n.toFixed(3).replace(/\.?0+$/, "")}${u}`;
+
+  if (abs >= 1e12) return fmt(abs / 1e12, "万亿");
+  if (abs >= 1e8) return fmt(abs / 1e8, "亿");
+  if (abs >= 1e4) return fmt(abs / 1e4, "万");
+  if (abs >= 1e3) return fmt(abs / 1e3, "千");
+  return formatExactNumber(val);
+}
+
 /**
  * 4. 时间戳双向转换器
  */
@@ -157,6 +195,9 @@ export function convertTimestamp(input: string): string {
 
   // 1. Python 浮点数时间戳 (如 1789264888.123456, 1789264888.0)
   const isFloatTimestamp = /^\d{9,11}\.\d+$/.test(trimmed);
+  let isSingleNumber = false;
+  let singleNumVal = 0;
+
   if (isFloatTimestamp) {
     const floatVal = parseFloat(trimmed);
     if (isNaN(floatVal) || floatVal <= 0 || floatVal > 253402300799) {
@@ -167,15 +208,17 @@ export function convertTimestamp(input: string): string {
     pythonFloat = trimmed;
     const parts = trimmed.split(".");
     subsecondsStr = parts[1];
+    isSingleNumber = true;
+    singleNumVal = floatVal;
   } else {
     const num = Number(trimmed);
-    if (!isNaN(num) && /^\d+$/.test(trimmed) && trimmed.length >= 9 && trimmed.length <= 16) {
-      // 2. 纯数字整数时间戳 (10位秒 / 13位毫秒 / 16位微秒)
-      if (trimmed.length === 10) {
+    if (!isNaN(num) && /^\d+$/.test(trimmed) && trimmed.length >= 9 && trimmed.length <= 19) {
+      // 2. 纯数字整数时间戳 (<=11位秒 / 12~14位毫秒 / 15~17位微秒)
+      if (trimmed.length <= 11) {
         sec = num;
         ms = num * 1000;
         pythonFloat = `${sec}.0`;
-      } else if (trimmed.length === 13) {
+      } else if (trimmed.length <= 14) {
         sec = Math.floor(num / 1000);
         ms = num;
         const sub = num % 1000;
@@ -183,7 +226,7 @@ export function convertTimestamp(input: string): string {
         if (sub !== 0) {
           subsecondsStr = String(sub).padStart(3, "0");
         }
-      } else if (trimmed.length === 16) {
+      } else if (trimmed.length <= 17) {
         sec = Math.floor(num / 1_000_000);
         ms = Math.floor(num / 1_000);
         const sub = num % 1_000_000;
@@ -196,6 +239,8 @@ export function convertTimestamp(input: string): string {
         ms = num;
         pythonFloat = (num / 1000).toFixed(3);
       }
+      isSingleNumber = true;
+      singleNumVal = num;
     } else {
       // 3. 日期与时间字符串 (如 2026-09-13 10:01:28+08:00, 2024-1-2, 2024/01/02 12:00:00, ISO8601)
       let parsedDate = new Date(trimmed);
@@ -255,17 +300,87 @@ export function convertTimestamp(input: string): string {
   }
 
   const rows: [string, string][] = [
-    ["原始输入 (Input)", `\`${trimmed}\``],
-    ["本地时间 (Local Time)", localFormatted],
-    ["UTC 时间 (UTC Time)", utcFormatted],
+    ["原始输入", `\`${trimmed}\``],
+    ["本地时间", localFormatted],
+    ["UTC 时间", utcFormatted],
     ["ISO 8601", `\`${isoFormatted}\``],
-    ["秒级时间戳 (s)", `\`${sec}\``],
-    ["毫秒级时间戳 (ms)", `\`${ms}\``],
-    ["Python 浮点时间戳 (s)", `\`${pythonFloat}\``],
+    ["秒级时间戳", `\`${sec}\``],
+    ["毫秒级时间戳", `\`${ms}\``],
+    ["浮点时间戳", `\`${pythonFloat}\``],
     ["相对时间 (Relative)", relative],
   ];
 
+  if (isSingleNumber) {
+    rows.splice(
+      1,
+      0,
+      ["英语习惯 (EN)", formatEnglishNumber(singleNumVal)],
+      ["中文习惯 (CN)", formatChineseNumber(singleNumVal)],
+    );
+  }
+
   let md = "| 格式 / 属性 | 数值 / 结果 |\n| :--- | :--- |\n";
+  for (const [prop, val] of rows) {
+    md += `| **${prop}** | ${val} |\n`;
+  }
+  return md;
+}
+
+/**
+ * 5. 智能计算器 (带中英文数量单位换算)
+ */
+export function evaluateSmartExpression(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("请输入要计算的数学表达式");
+  }
+
+  // Replace symbols
+  let expr = trimmed.replace(/×/g, "*").replace(/÷/g, "/").replace(/\^/g, "**");
+
+  // Replace units with exponential notation (e.g. 1K -> 1e3, 1万 -> 1e4)
+  // Order matters: match larger / multi-character units first!
+  const unitReplacements: [RegExp, string][] = [
+    [/(\d+(?:\.\d+)?)\s*(?:万亿|兆|[zZtT])/g, "$1e12"],
+    [/(\d+(?:\.\d+)?)\s*[pP]/g, "$1e15"],
+    [/(\d+(?:\.\d+)?)\s*(?:千万)/g, "$1e7"],
+    [/(\d+(?:\.\d+)?)\s*(?:百万|[mM])/g, "$1e6"],
+    [/(\d+(?:\.\d+)?)\s*(?:[gG]|B)/g, "$1e9"],
+    [/(\d+(?:\.\d+)?)\s*(?:亿|[yY])/g, "$1e8"],
+    [/(\d+(?:\.\d+)?)\s*(?:万|[wW])/g, "$1e4"],
+    [/(\d+(?:\.\d+)?)\s*(?:千|[qQkK])/g, "$1e3"],
+    [/(\d+(?:\.\d+)?)\s*(?:百|b)/g, "$1e2"],
+  ];
+
+  for (const [pattern, replacement] of unitReplacements) {
+    expr = expr.replace(pattern, replacement);
+  }
+
+  // Security & syntax check: expression must only contain allowed math characters
+  if (!/^[0-9eE+\-*/%(). ]+$/.test(expr)) {
+    throw new Error("无法识别的数学表达式 (包含非法字符或未识别单位)");
+  }
+
+  let result: number;
+  try {
+    const fn = new Function('"use strict"; return (' + expr + ")");
+    result = Number(fn());
+  } catch (err: any) {
+    throw new Error("数学表达式语法错误: " + (err?.message || "无法计算"));
+  }
+
+  if (isNaN(result) || !isFinite(result)) {
+    throw new Error("计算结果为无效数值 (NaN 或 无穷大)");
+  }
+
+  const rows: [string, string][] = [
+    ["输入表达式 (Input)", `\`${trimmed}\``],
+    ["精确值 (Exact)", formatExactNumber(result)],
+    ["英语习惯 (EN)", formatEnglishNumber(result)],
+    ["中文习惯 (CN)", formatChineseNumber(result)],
+  ];
+
+  let md = "| 格式 / 维度 | 结算结果 |\n| :--- | :--- |\n";
   for (const [prop, val] of rows) {
     md += `| **${prop}** | ${val} |\n`;
   }
@@ -296,6 +411,9 @@ export function executeCodeTool(
 
     case "timestamp-converter":
       return convertTimestamp(input);
+
+    case "calculator":
+      return evaluateSmartExpression(input);
 
     default:
       if (preprocessed?.formattedText) {

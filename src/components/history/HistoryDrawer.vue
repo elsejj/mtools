@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue';
-import { useHistoryStore } from '@/stores/history';
-import { usePayloadStore } from '@/stores/payload';
-import { useToolStore } from '@/stores/tools';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { ref, watch, onMounted, computed } from "vue";
+import { useHistoryStore } from "@/stores/history";
+import { usePayloadStore } from "@/stores/payload";
+import { useToolStore } from "@/stores/tools";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   IconX,
   IconSearch,
@@ -16,30 +16,31 @@ import {
   IconClipboard,
   IconDeviceFloppy,
   IconCalculator,
-} from '@tabler/icons-vue';
-import { tauriApi } from '@/lib/tauri';
-import type { HistoryRecordItem } from '@/types';
+} from "@tabler/icons-vue";
+import { tauriApi } from "@/lib/tauri";
+import type { HistoryRecordItem } from "@/types";
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
 }>();
 
 const historyStore = useHistoryStore();
 const payloadStore = usePayloadStore();
 const toolStore = useToolStore();
 
-const searchInput = ref('');
-const selectedFilterToolId = ref<string>('all');
+const searchInput = ref("");
+const selectedFilterToolId = ref<string>("all");
 
 const toolFilterTabs = [
-  { id: 'all', label: '全部' },
-  { id: 'json-formatter', label: 'JSON' },
-  { id: 'jwt-inspector', label: 'JWT' },
-  { id: 'timestamp-converter', label: '时间戳' },
-  { id: 'url-codec', label: 'URL' },
-  { id: 'ocr-extractor', label: 'OCR' },
-  { id: 'llm-translate', label: '翻译' },
-  { id: 'cli-runner', label: 'CLI' },
+  { id: "all", label: "全部" },
+  { id: "json-formatter", label: "JSON" },
+  { id: "jwt-inspector", label: "JWT" },
+  { id: "timestamp-converter", label: "时间戳" },
+  { id: "calculator", label: "计算器" },
+  { id: "url-codec", label: "URL" },
+  { id: "ocr-extractor", label: "OCR" },
+  { id: "llm-translate", label: "翻译" },
+  { id: "cli-runner", label: "CLI" },
 ];
 
 watch(searchInput, (val) => {
@@ -47,7 +48,7 @@ watch(searchInput, (val) => {
 });
 
 watch(selectedFilterToolId, (toolId) => {
-  historyStore.setToolFilter(toolId === 'all' ? undefined : toolId);
+  historyStore.setToolFilter(toolId === "all" ? undefined : toolId);
 });
 
 onMounted(() => {
@@ -64,7 +65,7 @@ async function loadIntoWorkspace(item: HistoryRecordItem) {
       }
     }
   }
-  emit('close');
+  emit("close");
 }
 
 function openFolder(path?: string) {
@@ -80,10 +81,16 @@ function formatDate(ts: number) {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-2xs select-none animate-in fade-in duration-150">
-    <div class="flex h-full w-full max-w-lg flex-col border-l border-border bg-background shadow-xl">
+  <div
+    class="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-2xs select-none animate-in fade-in duration-150"
+  >
+    <div
+      class="flex h-full w-full max-w-lg flex-col border-l border-border bg-background shadow-xl"
+    >
       <!-- Header -->
-      <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 bg-muted/20">
+      <div
+        class="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 bg-muted/20"
+      >
         <div class="flex items-center space-x-2">
           <IconClock class="h-4 w-4 text-primary" />
           <h2 class="text-sm font-semibold text-foreground">历史记录与回溯</h2>
@@ -136,7 +143,7 @@ function formatDate(ts: number) {
               'px-2 py-0.5 rounded text-[11px] whitespace-nowrap transition-colors cursor-pointer',
               selectedFilterToolId === tab.id
                 ? 'bg-primary text-primary-foreground font-medium'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             ]"
           >
             {{ tab.label }}
@@ -174,11 +181,7 @@ function formatDate(ts: number) {
               >
                 <IconDeviceFloppy class="h-2.5 w-2.5 mr-0.5" /> 已存盘
               </Badge>
-              <Badge
-                v-else
-                variant="outline"
-                class="text-[9px] px-1 py-0 text-muted-foreground"
-              >
+              <Badge v-else variant="outline" class="text-[9px] px-1 py-0 text-muted-foreground">
                 <IconCalculator class="h-2.5 w-2.5 mr-0.5" /> 仅计算
               </Badge>
             </div>
@@ -190,7 +193,7 @@ function formatDate(ts: number) {
 
           <!-- Record Body: Input summary -->
           <div class="py-2 text-xs font-mono text-muted-foreground truncate select-text">
-            {{ item.inputSummary || item.inputText || '(无输入文本)' }}
+            {{ item.inputSummary || item.inputText || "(无输入文本)" }}
           </div>
 
           <!-- Saved File Path bubble if any -->
@@ -212,9 +215,7 @@ function formatDate(ts: number) {
 
           <!-- Actions -->
           <div class="flex items-center justify-between pt-1 text-xs">
-            <span class="text-[10px] text-muted-foreground">
-              耗时: {{ item.durationMs }}ms
-            </span>
+            <span class="text-[10px] text-muted-foreground"> 耗时: {{ item.durationMs }}ms </span>
             <div class="flex items-center space-x-1">
               <Button
                 variant="secondary"

@@ -1,3 +1,4 @@
+pub mod calc;
 pub mod image;
 pub mod json;
 pub mod jwt;

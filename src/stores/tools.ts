@@ -79,6 +79,27 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    id: "calculator",
+    name: "计算器",
+    icon: "IconCalculator",
+    description: "支持中英文数量单位（K/M/G/万/亿等）的智能表达式计算器",
+    category: "developer",
+    isCustom: false,
+    enabled: true,
+    sortOrder: 4,
+    matcher: {
+      acceptedTypes: ["text"],
+      requiredFormats: ["calc"],
+      basePriority: 10,
+    },
+    type: "code",
+    postAction: { type: "none" },
+    codeConfig: {
+      script: "",
+      outputType: "markdown",
+    },
+  },
+  {
     id: "url-codec",
     name: "URL 编解码",
     icon: "IconLink",
@@ -86,7 +107,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     category: "developer",
     isCustom: false,
     enabled: true,
-    sortOrder: 4,
+    sortOrder: 5,
     matcher: {
       acceptedTypes: ["text"],
       requiredFormats: ["url"],
@@ -107,7 +128,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     category: "ai",
     isCustom: false,
     enabled: true,
-    sortOrder: 5,
+    sortOrder: 6,
     matcher: {
       acceptedTypes: ["image"],
       basePriority: 10,
@@ -131,7 +152,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     category: "ai",
     isCustom: false,
     enabled: true,
-    sortOrder: 6,
+    sortOrder: 7,
     matcher: {
       acceptedTypes: ["text"],
       basePriority: 35,
@@ -155,7 +176,7 @@ export const DEFAULT_TOOLS: ToolDefinition[] = [
     category: "utilities",
     isCustom: false,
     enabled: true,
-    sortOrder: 7,
+    sortOrder: 8,
     matcher: {
       acceptedTypes: ["text"],
       basePriority: 20,
@@ -235,10 +256,7 @@ export function calculateToolMatchScore(
         }
       } else if (fmt === "time") {
         const num = Number(content);
-        if (
-          !isNaN(num) &&
-          (content.length === 10 || content.length === 13 || content.length === 16)
-        ) {
+        if (!isNaN(num) && /^\d+$/.test(content) && content.length >= 9 && content.length <= 19) {
           score += 85;
           formatMatched = true;
         } else if (!isNaN(num) && /^\d{9,11}\.\d+$/.test(content)) {
@@ -252,6 +270,24 @@ export function calculateToolMatchScore(
             !isNaN(new Date(content.replace(/\//g, "-")).getTime())
           ) {
             score += 85;
+            formatMatched = true;
+          }
+        }
+      } else if (fmt === "calc") {
+        const hasDigits = /\d/.test(content);
+        const hasOps = /[+\-*/%^×÷]/.test(content);
+        const hasUnits = /[万亿千百兆KMGTBPwqybz]/i.test(content);
+        const isPureNumber = !isNaN(Number(content)) && /^\d+(\.\d+)?$/.test(content);
+        if (
+          hasDigits &&
+          (hasOps || hasUnits || isPureNumber) &&
+          !content.startsWith("{") &&
+          !content.startsWith("[") &&
+          !content.startsWith("data:")
+        ) {
+          // Exclude date format YYYY-MM-DD
+          if (!/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(content)) {
+            score += hasOps || hasUnits ? 85 : 70;
             formatMatched = true;
           }
         }
