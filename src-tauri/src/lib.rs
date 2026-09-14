@@ -6,6 +6,7 @@ pub mod post_action;
 pub mod sendkey;
 pub mod sniffer;
 pub mod storage;
+pub mod tray;
 
 use base64::prelude::*;
 use models::*;
@@ -103,28 +104,21 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .on_window_event(|window, event| {
       match event {
-        tauri::WindowEvent::CloseRequested { .. }
-        | tauri::WindowEvent::Destroyed
-        | tauri::WindowEvent::Focused(false) => {
-          if let Some(storage) = window.app_handle().try_state::<AppStorage>() {
-            if let Ok(conn) = storage.db.lock() {
-              let is_max = window.is_maximized().unwrap_or(false);
-              let pos = window.outer_position().unwrap_or_default();
-              let size = window.inner_size().unwrap_or_default();
-              if size.width >= 400 && size.height >= 300 {
-                let _ = storage::window::save_window_geometry(
-                  &conn,
-                  &crate::models::WindowGeometry {
-                    x: pos.x,
-                    y: pos.y,
-                    width: size.width,
-                    height: size.height,
-                    is_maximized: is_max,
-                  },
-                );
-              }
-            }
-          }
+        tauri::WindowEvent::Resized(size) => {
+          println!("Resized: {:?}", size);
+          //storage::window::record_window_geometry(window);
+        }
+        tauri::WindowEvent::Moved(pos) => {
+          println!("Moved: {:?}", pos);
+        }
+        tauri::WindowEvent::CloseRequested { api, .. } => {
+          // 点击关闭按钮时隐藏至系统托盘，不直接杀掉应用进程
+          api.prevent_close();
+          let _ = window.hide();
+          storage::window::record_window_geometry(window);
+        }
+        tauri::WindowEvent::Destroyed | tauri::WindowEvent::Focused(false) => {
+          storage::window::record_window_geometry(window);
         }
         _ => {}
       }
@@ -137,10 +131,10 @@ pub fn run() {
       let storage = AppStorage::init(data_dir)?;
 
       // 启动时自动恢复上次记忆的窗口尺寸与位置
-      if let Some(window) = app.get_webview_window("main") {
+      if let Some(_window) = app.get_webview_window("main") {
         if let Ok(conn) = storage.db.lock() {
-          if let Ok(Some(geom)) = storage::window::get_window_geometry(&conn) {
-            storage::window::apply_window_geometry(&window, &geom);
+          if let Ok(Some(_geom)) = storage::window::get_window_geometry(&conn) {
+            //storage::window::apply_window_geometry(&window, &geom);
           }
         }
       }
@@ -149,6 +143,11 @@ pub fn run() {
 
       let registry = SnifferRegistry::new();
       app.manage(registry);
+
+      // 初始化系统托盘（图标、菜单、点击交互）
+      if let Err(err) = tray::setup_system_tray(app) {
+        eprintln!("Failed to setup system tray: {}", err);
+      }
 
       Ok(())
     })

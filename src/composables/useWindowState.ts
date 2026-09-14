@@ -1,76 +1,17 @@
-import { onMounted, onUnmounted } from "vue";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import { onMounted } from "vue";
 import { tauriApi } from "@/lib/tauri";
 
+/**
+ * 窗口状态管理
+ * 注：窗口尺寸（Resized）与位置（Moved）现已完全由 Rust 端的 on_window_event 原生监听与持久化，
+ * 前端无需再监听 resize/move 事件或维护防抖定时器。此处仅在挂载时保留一次兜底的尺寸恢复请求。
+ */
 export function useWindowState() {
-  let unlistenResize: UnlistenFn | null = null;
-  let unlistenMove: UnlistenFn | null = null;
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  async function persistGeometry() {
-    try {
-      const appWindow = getCurrentWindow();
-      const isMaximized = await appWindow.isMaximized();
-      const pos = await appWindow.outerPosition();
-      const size = await appWindow.innerSize();
-
-      if (size.width >= 400 && size.height >= 300) {
-        await tauriApi.saveWindowGeometry({
-          x: pos.x,
-          y: pos.y,
-          width: size.width,
-          height: size.height,
-          isMaximized,
-        });
-      }
-    } catch (err) {
-      console.warn("Failed to persist window geometry:", err);
-    }
-  }
-
-  function debouncedPersist() {
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-    debounceTimer = setTimeout(() => {
-      persistGeometry();
-    }, 300);
-  }
-
   onMounted(async () => {
     try {
-      // 1. 尝试从存储中恢复上次记忆的尺寸和位置
-      await tauriApi.restoreWindowGeometry();
-
-      // 2. 监听窗口调整与移动事件
-      const appWindow = getCurrentWindow();
-      unlistenResize = await appWindow.onResized(debouncedPersist);
-      unlistenMove = await appWindow.onMoved(debouncedPersist);
-    } catch (err) {
-      console.warn("Failed to initialize window geometry listeners:", err);
-    }
-
-    window.addEventListener("beforeunload", persistGeometry);
-  });
-
-  onUnmounted(() => {
-    window.removeEventListener("beforeunload", persistGeometry);
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-    persistGeometry();
-    if (unlistenResize) {
-      unlistenResize();
-      unlistenResize = null;
-    }
-    if (unlistenMove) {
-      unlistenMove();
-      unlistenMove = null;
+      //await tauriApi.restoreWindowGeometry();
+    } catch {
+      // 纯网页开发模式无 Tauri 运行时环境，静默忽略
     }
   });
-
-  return {
-    persistGeometry,
-  };
 }

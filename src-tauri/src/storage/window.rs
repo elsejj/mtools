@@ -2,6 +2,7 @@ use crate::models::WindowGeometry;
 use rusqlite::{params, Connection};
 
 pub fn save_window_geometry(conn: &Connection, geometry: &WindowGeometry) -> Result<(), String> {
+  println!("save window size: {:?}", geometry);
   if geometry.is_maximized {
     // 窗口最大化时，更新 is_maximized 为 1，并保留最大化前的正常尺寸与位置
     conn
@@ -54,17 +55,8 @@ pub fn get_window_geometry(conn: &Connection) -> Result<Option<WindowGeometry>, 
 }
 
 pub fn apply_window_geometry(window: &tauri::WebviewWindow, geom: &WindowGeometry) {
+  println!("set window size: {:?}", geom);
   if geom.is_maximized {
-    if geom.width >= 400 && geom.height >= 300 {
-      let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-        width: geom.width,
-        height: geom.height,
-      }));
-    }
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-      x: geom.x,
-      y: geom.y,
-    }));
     let _ = window.maximize();
   } else {
     let _ = window.unmaximize();
@@ -74,9 +66,31 @@ pub fn apply_window_geometry(window: &tauri::WebviewWindow, geom: &WindowGeometr
         height: geom.height,
       }));
     }
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-      x: geom.x,
-      y: geom.y,
-    }));
+  }
+}
+
+pub fn record_window_geometry(window: &tauri::Window) {
+  use tauri::Manager;
+  if let Some(storage) = window
+    .app_handle()
+    .try_state::<crate::storage::AppStorage>()
+  {
+    if let Ok(conn) = storage.db.lock() {
+      let is_max = window.is_maximized().unwrap_or(false);
+      let pos = window.outer_position().unwrap_or_default();
+      let size = window.outer_size().unwrap_or_default();
+      if size.width >= 400 && size.height >= 300 {
+        let _ = save_window_geometry(
+          &conn,
+          &WindowGeometry {
+            x: pos.x,
+            y: pos.y,
+            width: size.width,
+            height: size.height,
+            is_maximized: is_max,
+          },
+        );
+      }
+    }
   }
 }
