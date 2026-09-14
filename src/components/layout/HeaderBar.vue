@@ -1,23 +1,17 @@
 <script setup lang="ts">
-import { usePayloadStore } from '@/stores/payload';
-import { useToolStore } from '@/stores/tools';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  IconClock,
-  IconSettings,
-  IconSearch,
-  IconSparkles,
-} from '@tabler/icons-vue';
+import { usePayloadStore } from "@/stores/payload";
+import { useToolStore } from "@/stores/tools";
+import { Button } from "@/components/ui/button";
+import { IconClock, IconSettings, IconSearch, IconSparkles } from "@tabler/icons-vue";
 
 const props = defineProps<{
-  activeTab: 'workspace' | 'history' | 'settings';
+  activeTab: "workspace" | "history" | "settings";
 }>();
 
 const emit = defineEmits<{
-  (e: 'toggleHistory'): void;
-  (e: 'toggleSettings'): void;
-  (e: 'focusSearch'): void;
+  (e: "toggleHistory"): void;
+  (e: "toggleSettings"): void;
+  (e: "focusSearch"): void;
 }>();
 
 const payloadStore = usePayloadStore();
@@ -32,11 +26,17 @@ function selectCandidate(toolId: string) {
 </script>
 
 <template>
-  <header class="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 bg-muted/20 select-none">
+  <header
+    class="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 bg-muted/20 select-none"
+  >
     <!-- Left: Brand + Candidates Bar -->
     <div class="flex items-center space-x-3 overflow-x-auto py-1">
-      <div class="flex items-center space-x-1.5 font-bold tracking-tight text-primary mr-1 shrink-0">
-        <span class="flex items-center justify-center h-6 w-6 bg-primary text-primary-foreground text-xs font-mono font-bold rounded shadow-xs">
+      <div
+        class="flex items-center space-x-1.5 font-bold tracking-tight text-primary mr-1 shrink-0"
+      >
+        <span
+          class="flex items-center justify-center h-6 w-6 bg-primary text-primary-foreground text-xs font-mono font-bold rounded shadow-xs"
+        >
           M
         </span>
         <span class="text-sm tracking-tight font-semibold">mTools</span>
@@ -45,7 +45,9 @@ function selectCandidate(toolId: string) {
       <!-- Candidate Recommended Tools with Alt+N Badges -->
       <div class="flex items-center space-x-1.5">
         <button
-          v-for="(candidate, idx) in toolStore.getRecommendedTools(payloadStore.candidateScores).slice(0, 5)"
+          v-for="(candidate, idx) in toolStore
+            .getRecommendedTools(payloadStore.candidateScores)
+            .slice(0, 5)"
           :key="candidate.id"
           type="button"
           @click="selectCandidate(candidate.id)"
@@ -53,7 +55,7 @@ function selectCandidate(toolId: string) {
             'group flex items-center space-x-1.5 rounded-md px-2.5 py-1 text-xs transition-all cursor-pointer',
             toolStore.activeToolId === candidate.id
               ? 'bg-primary text-primary-foreground font-medium shadow-xs'
-              : 'bg-secondary/70 text-secondary-foreground hover:bg-secondary hover:text-foreground'
+              : 'bg-secondary/70 text-secondary-foreground hover:bg-secondary hover:text-foreground',
           ]"
         >
           <span class="truncate max-w-[120px]">{{ candidate.name }}</span>
@@ -62,7 +64,7 @@ function selectCandidate(toolId: string) {
               'rounded px-1 py-0.2 text-[10px] font-mono transition-opacity',
               toolStore.activeToolId === candidate.id
                 ? 'bg-white/20 text-primary-foreground'
-                : 'bg-black/10 dark:bg-white/10 text-muted-foreground group-hover:text-foreground'
+                : 'bg-black/10 dark:bg-white/10 text-muted-foreground group-hover:text-foreground',
             ]"
           >
             Alt+{{ idx + 1 }}
@@ -114,4 +116,3 @@ function selectCandidate(toolId: string) {
     </div>
   </header>
 </template>
-

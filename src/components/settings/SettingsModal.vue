@@ -1,31 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useSettingsStore } from '@/stores/settings';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { ref, onMounted } from "vue";
+import { useSettingsStore } from "@/stores/settings";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   IconX,
   IconSun,
   IconMoon,
   IconDeviceDesktop,
   IconTrash,
-  IconSparkles,
-  IconFolder,
   IconCheck,
   IconPlus,
   IconPlugConnected,
   IconLoader2,
-  IconChecklist,
-} from '@tabler/icons-vue';
-import type { LLMProvider } from '@/types';
+} from "@tabler/icons-vue";
+import type { LLMProvider } from "@/types";
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
 }>();
 
 const settingsStore = useSettingsStore();
-const activeProviderId = ref<string>('openai');
+const activeProviderId = ref<string>("openai");
 const savedNotice = ref(false);
 
 const isTestingConnection = ref(false);
@@ -39,7 +36,7 @@ onMounted(async () => {
   }
 });
 
-async function handleThemeChange(theme: 'light' | 'dark' | 'system') {
+async function handleThemeChange(theme: "light" | "dark" | "system") {
   await settingsStore.updateSettings({ theme });
 }
 
@@ -75,10 +72,10 @@ function handleAddCustomProvider() {
   const newId = `custom-provider-${Date.now()}`;
   const newProvider: LLMProvider = {
     id: newId,
-    name: '新建服务商',
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    defaultModel: 'gpt-4o',
+    name: "新建服务商",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "",
+    defaultModel: "gpt-4o",
   };
   settingsStore.addProvider(newProvider);
   activeProviderId.value = newId;
@@ -87,7 +84,7 @@ function handleAddCustomProvider() {
 function handleDeleteProvider(id: string) {
   settingsStore.removeProvider(id);
   if (activeProviderId.value === id) {
-    activeProviderId.value = settingsStore.settings.providers[0]?.id || '';
+    activeProviderId.value = settingsStore.settings.providers[0]?.id || "";
   }
 }
 
@@ -97,10 +94,16 @@ function setDefaultProvider(id: string) {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs select-none p-4 animate-in fade-in duration-150">
-    <div class="flex h-[620px] w-full max-w-2xl flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs select-none p-4 animate-in fade-in duration-150"
+  >
+    <div
+      class="flex h-[620px] w-full max-w-2xl flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden"
+    >
       <!-- Header -->
-      <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-5 bg-muted/20">
+      <div
+        class="flex h-12 shrink-0 items-center justify-between border-b border-border px-5 bg-muted/20"
+      >
         <h2 class="text-sm font-semibold text-foreground">系统首选项与配置中心</h2>
         <Button
           variant="ghost"
@@ -125,7 +128,7 @@ function setDefaultProvider(id: string) {
                 'flex items-center justify-center space-x-2 rounded-lg border p-2.5 transition-all cursor-pointer',
                 settingsStore.settings.theme === 'system'
                   ? 'border-primary bg-primary/10 text-primary font-medium shadow-2xs'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                  : 'border-border bg-card text-muted-foreground hover:bg-muted',
               ]"
             >
               <IconDeviceDesktop class="h-4 w-4" />
@@ -139,7 +142,7 @@ function setDefaultProvider(id: string) {
                 'flex items-center justify-center space-x-2 rounded-lg border p-2.5 transition-all cursor-pointer',
                 settingsStore.settings.theme === 'light'
                   ? 'border-primary bg-primary/10 text-primary font-medium shadow-2xs'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                  : 'border-border bg-card text-muted-foreground hover:bg-muted',
               ]"
             >
               <IconSun class="h-4 w-4" />
@@ -153,7 +156,7 @@ function setDefaultProvider(id: string) {
                 'flex items-center justify-center space-x-2 rounded-lg border p-2.5 transition-all cursor-pointer',
                 settingsStore.settings.theme === 'dark'
                   ? 'border-primary bg-primary/10 text-primary font-medium shadow-2xs'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                  : 'border-border bg-card text-muted-foreground hover:bg-muted',
               ]"
             >
               <IconMoon class="h-4 w-4" />
@@ -211,12 +214,17 @@ function setDefaultProvider(id: string) {
               v-for="p in settingsStore.settings.providers"
               :key="p.id"
               type="button"
-              @click="() => { activeProviderId = p.id; testResult = null; }"
+              @click="
+                () => {
+                  activeProviderId = p.id;
+                  testResult = null;
+                }
+              "
               :class="[
                 'flex items-center space-x-1.5 px-3 py-1 rounded border text-xs cursor-pointer transition-colors whitespace-nowrap',
                 activeProviderId === p.id
                   ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                  : 'border-border bg-card text-muted-foreground hover:bg-muted',
               ]"
             >
               <span>{{ p.name }}</span>
@@ -232,7 +240,9 @@ function setDefaultProvider(id: string) {
 
           <!-- Active Provider Settings Form -->
           <div
-            v-for="provider in settingsStore.settings.providers.filter((p) => p.id === activeProviderId)"
+            v-for="provider in settingsStore.settings.providers.filter(
+              (p) => p.id === activeProviderId,
+            )"
             :key="provider.id"
             class="space-y-3 rounded-lg border border-border bg-card p-3.5"
           >
@@ -281,7 +291,9 @@ function setDefaultProvider(id: string) {
               v-if="testResult"
               :class="[
                 'flex items-center space-x-1.5 rounded p-2 text-xs font-medium',
-                testResult.success ? 'bg-green-500/10 text-green-600 border border-green-500/20' : 'bg-destructive/10 text-destructive border border-destructive/20'
+                testResult.success
+                  ? 'bg-green-500/10 text-green-600 border border-green-500/20'
+                  : 'bg-destructive/10 text-destructive border border-destructive/20',
               ]"
             >
               <IconCheck v-if="testResult.success" class="h-3.5 w-3.5 shrink-0" />
@@ -295,7 +307,9 @@ function setDefaultProvider(id: string) {
                 <Input v-model="provider.baseUrl" class="h-8 text-xs font-mono" />
               </div>
               <div class="space-y-1">
-                <label class="text-[11px] text-muted-foreground">默认模型名称 (Default Model)</label>
+                <label class="text-[11px] text-muted-foreground"
+                  >默认模型名称 (Default Model)</label
+                >
                 <Input v-model="provider.defaultModel" class="h-8 text-xs font-mono" />
               </div>
             </div>
@@ -338,7 +352,9 @@ function setDefaultProvider(id: string) {
           >
             <div>
               <span class="text-muted-foreground">已存文件：</span>
-              <strong class="font-medium text-foreground">{{ settingsStore.imageCacheStats.fileCount }} 张</strong>
+              <strong class="font-medium text-foreground"
+                >{{ settingsStore.imageCacheStats.fileCount }} 张</strong
+              >
             </div>
             <div>
               <span class="text-muted-foreground">磁盘占用：</span>
@@ -351,11 +367,15 @@ function setDefaultProvider(id: string) {
       </div>
 
       <!-- Footer -->
-      <div class="flex h-12 shrink-0 items-center justify-between border-t border-border px-5 bg-muted/20">
+      <div
+        class="flex h-12 shrink-0 items-center justify-between border-t border-border px-5 bg-muted/20"
+      >
         <span v-if="savedNotice" class="text-xs text-green-600 flex items-center">
           <IconCheck class="h-3.5 w-3.5 mr-1" /> 已成功保存首选项并生效
         </span>
-        <span v-else class="text-xs text-muted-foreground">配置修改后即刻生效并持久化到 SQLite 数据库</span>
+        <span v-else class="text-xs text-muted-foreground"
+          >配置修改后即刻生效并持久化到 SQLite 数据库</span
+        >
 
         <div class="flex items-center space-x-2">
           <Button size="sm" class="h-7 text-xs px-3 cursor-pointer" @click="saveCurrentSettings">

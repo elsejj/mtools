@@ -2,7 +2,7 @@ use crate::models::WindowGeometry;
 use rusqlite::{params, Connection};
 
 pub fn save_window_geometry(conn: &Connection, geometry: &WindowGeometry) -> Result<(), String> {
-  println!("save window size: {:?}", geometry);
+  //println!("save window size: {:?}", geometry);
   if geometry.is_maximized {
     // 窗口最大化时，更新 is_maximized 为 1，并保留最大化前的正常尺寸与位置
     conn
@@ -55,7 +55,7 @@ pub fn get_window_geometry(conn: &Connection) -> Result<Option<WindowGeometry>, 
 }
 
 pub fn apply_window_geometry(window: &tauri::WebviewWindow, geom: &WindowGeometry) {
-  println!("set window size: {:?}", geom);
+  //println!("set window size: {:?}", geom);
   if geom.is_maximized {
     let _ = window.maximize();
   } else {

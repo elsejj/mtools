@@ -2,16 +2,14 @@
 import { ref, computed } from "vue";
 import { useToolStore } from "@/stores/tools";
 import { usePayloadStore } from "@/stores/payload";
-import { useSettingsStore } from "@/stores/settings";
 import { Button } from "@/components/ui/button";
-import { IconCopy, IconCheck, IconArrowBackUp, IconPlayerPlay, IconClock } from "@tabler/icons-vue";
+import { IconCopy, IconCheck, IconArrowBackUp, IconPlayerPlay } from "@tabler/icons-vue";
 import { tauriApi } from "@/lib/tauri";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { copyContentToClipboard, markdownToRichHtml } from "@/lib/clipboard";
 
 const toolStore = useToolStore();
 const payloadStore = usePayloadStore();
-const settingsStore = useSettingsStore();
 
 const copied = ref(false);
 const pasted = ref(false);

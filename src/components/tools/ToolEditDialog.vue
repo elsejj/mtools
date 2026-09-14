@@ -1,57 +1,51 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import { useToolStore, calculateToolMatchScore } from '@/stores/tools';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  IconX,
-  IconSparkles,
-  IconCheck,
-  IconAdjustments,
-  IconCode,
-} from '@tabler/icons-vue';
-import type { ToolDefinition, ToolType, PostActionType } from '@/types';
+import { ref, computed, watch, onMounted } from "vue";
+import { useToolStore, calculateToolMatchScore } from "@/stores/tools";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { IconX, IconSparkles, IconAdjustments } from "@tabler/icons-vue";
+import type { ToolDefinition, ToolType, PostActionType } from "@/types";
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
 }>();
 
 const toolStore = useToolStore();
 
 const toolForm = ref<ToolDefinition>({
   id: `custom-tool-${Date.now()}`,
-  name: '新自定义工具',
-  icon: 'IconCode',
-  description: '执行自定义处理与后置逻辑',
-  category: 'developer',
+  name: "新自定义工具",
+  icon: "IconCode",
+  description: "执行自定义处理与后置逻辑",
+  category: "developer",
   isCustom: true,
   enabled: true,
   sortOrder: 99,
   matcher: {
-    acceptedTypes: ['text'],
+    acceptedTypes: ["text"],
     patterns: [],
     requiredFormats: [],
     basePriority: 50,
   },
-  type: 'code',
+  type: "code",
   postAction: {
-    type: 'none',
+    type: "none",
     saveConfig: {
-      directory: 'custom_output',
-      extension: 'txt',
+      directory: "custom_output",
+      extension: "txt",
     },
   },
   cliConfig: {
-    command: 'cat',
+    command: "cat",
     args: [],
-    stdinMode: 'pipe',
+    stdinMode: "pipe",
     timeoutMs: 5000,
   },
   llmConfig: {
     useSystemProvider: true,
-    systemPrompt: '请处理输入的文本并返回清晰的结果。',
-    userPromptTemplate: '{{input}}',
+    systemPrompt: "请处理输入的文本并返回清晰的结果。",
+    userPromptTemplate: "{{input}}",
     stream: true,
     temperature: 0.7,
   },
@@ -64,51 +58,59 @@ onMounted(() => {
 });
 
 // Pattern string for editing
-const patternInput = ref(toolForm.value.matcher.patterns?.join(', ') || '');
+const patternInput = ref(toolForm.value.matcher.patterns?.join(", ") || "");
 watch(patternInput, (val) => {
   toolForm.value.matcher.patterns = val
-    .split(',')
+    .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 });
 
 // Real-time Matcher Simulator
 const testSampleText = ref('{"status": "ok", "code": 200}');
-const testSampleType = ref<'text' | 'image'>('text');
+const testSampleType = ref<"text" | "image">("text");
 
 const matchScore = computed(() => {
   return calculateToolMatchScore(toolForm.value, testSampleText.value, testSampleType.value);
 });
 
 const scoreColorClass = computed(() => {
-  if (matchScore.value >= 80) return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30';
-  if (matchScore.value >= 50) return 'text-sky-500 bg-sky-500/10 border-sky-500/30';
-  if (matchScore.value > 0) return 'text-amber-500 bg-amber-500/10 border-amber-500/30';
-  return 'text-muted-foreground bg-muted border-border';
+  if (matchScore.value >= 80) return "text-emerald-500 bg-emerald-500/10 border-emerald-500/30";
+  if (matchScore.value >= 50) return "text-sky-500 bg-sky-500/10 border-sky-500/30";
+  if (matchScore.value > 0) return "text-amber-500 bg-amber-500/10 border-amber-500/30";
+  return "text-muted-foreground bg-muted border-border";
 });
 
 async function handleSave() {
   await toolStore.saveTool(toolForm.value);
   toolStore.setActiveTool(toolForm.value.id);
   toolStore.setEditingTool(null);
-  emit('close');
+  emit("close");
 }
 
 function handleClose() {
   toolStore.setEditingTool(null);
-  emit('close');
+  emit("close");
 }
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs select-none p-4 animate-in fade-in duration-150">
-    <div class="flex h-[620px] w-full max-w-2xl flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs select-none p-4 animate-in fade-in duration-150"
+  >
+    <div
+      class="flex h-[620px] w-full max-w-2xl flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden"
+    >
       <!-- Header -->
-      <div class="flex h-12 shrink-0 items-center justify-between border-b border-border px-5 bg-muted/20">
+      <div
+        class="flex h-12 shrink-0 items-center justify-between border-b border-border px-5 bg-muted/20"
+      >
         <div class="flex items-center space-x-2">
           <IconAdjustments class="h-4 w-4 text-primary" />
           <h2 class="text-sm font-semibold text-foreground">
-            {{ toolStore.editingTool ? '编辑工具：' + toolStore.editingTool.name : '新建自定义工具' }}
+            {{
+              toolStore.editingTool ? "编辑工具：" + toolStore.editingTool.name : "新建自定义工具"
+            }}
           </h2>
         </div>
         <Button
@@ -155,7 +157,10 @@ function handleClose() {
               <IconSparkles class="h-3.5 w-3.5 text-primary" />
               <span>匹配规则与实时得分模拟器</span>
             </label>
-            <Badge variant="outline" :class="['text-xs font-mono font-bold px-2 py-0.5', scoreColorClass]">
+            <Badge
+              variant="outline"
+              :class="['text-xs font-mono font-bold px-2 py-0.5', scoreColorClass]"
+            >
               匹配得分: {{ matchScore }} 分
             </Badge>
           </div>
@@ -168,13 +173,18 @@ function handleClose() {
                   <input
                     type="checkbox"
                     :checked="toolForm.matcher.acceptedTypes.includes('text')"
-                    @change="(e: any) => {
-                      if (e.target.checked) {
-                        if (!toolForm.matcher.acceptedTypes.includes('text')) toolForm.matcher.acceptedTypes.push('text');
-                      } else {
-                        toolForm.matcher.acceptedTypes = toolForm.matcher.acceptedTypes.filter(t => t !== 'text');
+                    @change="
+                      (e: any) => {
+                        if (e.target.checked) {
+                          if (!toolForm.matcher.acceptedTypes.includes('text'))
+                            toolForm.matcher.acceptedTypes.push('text');
+                        } else {
+                          toolForm.matcher.acceptedTypes = toolForm.matcher.acceptedTypes.filter(
+                            (t) => t !== 'text',
+                          );
+                        }
                       }
-                    }"
+                    "
                     class="rounded border-input text-primary"
                   />
                   <span>文本 (text)</span>
@@ -183,13 +193,18 @@ function handleClose() {
                   <input
                     type="checkbox"
                     :checked="toolForm.matcher.acceptedTypes.includes('image')"
-                    @change="(e: any) => {
-                      if (e.target.checked) {
-                        if (!toolForm.matcher.acceptedTypes.includes('image')) toolForm.matcher.acceptedTypes.push('image');
-                      } else {
-                        toolForm.matcher.acceptedTypes = toolForm.matcher.acceptedTypes.filter(t => t !== 'image');
+                    @change="
+                      (e: any) => {
+                        if (e.target.checked) {
+                          if (!toolForm.matcher.acceptedTypes.includes('image'))
+                            toolForm.matcher.acceptedTypes.push('image');
+                        } else {
+                          toolForm.matcher.acceptedTypes = toolForm.matcher.acceptedTypes.filter(
+                            (t) => t !== 'image',
+                          );
+                        }
                       }
-                    }"
+                    "
                     class="rounded border-input text-primary"
                   />
                   <span>图片 (image)</span>
@@ -226,13 +241,25 @@ function handleClose() {
                 <button
                   type="button"
                   @click="testSampleType = 'text'"
-                  :class="testSampleType === 'text' ? 'text-primary font-medium underline' : 'hover:opacity-80'"
-                >文本样例</button>
+                  :class="
+                    testSampleType === 'text'
+                      ? 'text-primary font-medium underline'
+                      : 'hover:opacity-80'
+                  "
+                >
+                  文本样例
+                </button>
                 <button
                   type="button"
                   @click="testSampleType = 'image'"
-                  :class="testSampleType === 'image' ? 'text-primary font-medium underline' : 'hover:opacity-80'"
-                >图片样例</button>
+                  :class="
+                    testSampleType === 'image'
+                      ? 'text-primary font-medium underline'
+                      : 'hover:opacity-80'
+                  "
+                >
+                  图片样例
+                </button>
               </div>
             </div>
             <textarea
@@ -249,7 +276,7 @@ function handleClose() {
           <label class="font-medium text-foreground">引擎执行类型</label>
           <div class="grid grid-cols-3 gap-2">
             <button
-              v-for="t in (['code', 'llm', 'cli'] as ToolType[])"
+              v-for="t in ['code', 'llm', 'cli'] as ToolType[]"
               :key="t"
               type="button"
               @click="toolForm.type = t"
@@ -257,7 +284,7 @@ function handleClose() {
                 'p-2 rounded border text-xs capitalize cursor-pointer transition-colors',
                 toolForm.type === t
                   ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                  : 'border-border bg-card text-muted-foreground hover:bg-muted',
               ]"
             >
               {{ t }} 引擎
@@ -266,9 +293,14 @@ function handleClose() {
         </div>
 
         <!-- CLI Config -->
-        <div v-if="toolForm.type === 'cli' && toolForm.cliConfig" class="space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+        <div
+          v-if="toolForm.type === 'cli' && toolForm.cliConfig"
+          class="space-y-3 rounded-lg border border-border bg-muted/10 p-3"
+        >
           <div class="space-y-1">
-            <label class="text-[11px] text-muted-foreground">命令可执行文件 (如 jq, python3, prettier)</label>
+            <label class="text-[11px] text-muted-foreground"
+              >命令可执行文件 (如 jq, python3, prettier)</label
+            >
             <Input v-model="toolForm.cliConfig.command" class="h-8 text-xs font-mono" />
           </div>
           <div class="space-y-1">
@@ -284,9 +316,14 @@ function handleClose() {
         </div>
 
         <!-- LLM Config -->
-        <div v-else-if="toolForm.type === 'llm' && toolForm.llmConfig" class="space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+        <div
+          v-else-if="toolForm.type === 'llm' && toolForm.llmConfig"
+          class="space-y-3 rounded-lg border border-border bg-muted/10 p-3"
+        >
           <div class="space-y-1">
-            <label class="text-[11px] text-muted-foreground">System Prompt (系统角色与提示词)</label>
+            <label class="text-[11px] text-muted-foreground"
+              >System Prompt (系统角色与提示词)</label
+            >
             <textarea
               v-model="toolForm.llmConfig.systemPrompt"
               rows="2"
@@ -294,7 +331,9 @@ function handleClose() {
             />
           </div>
           <div class="space-y-1">
-            <label class="text-[11px] text-muted-foreground">用户提示词模板 (使用 {{input}} 占位)</label>
+            <label class="text-[11px] text-muted-foreground" v-pre
+              >用户提示词模板 (使用 {{ input }} 占位)</label
+            >
             <Input v-model="toolForm.llmConfig.userPromptTemplate" class="h-8 text-xs font-mono" />
           </div>
         </div>
@@ -304,7 +343,7 @@ function handleClose() {
           <label class="font-medium text-foreground">后置执行动作 (Post-Action)</label>
           <div class="grid grid-cols-3 gap-2">
             <button
-              v-for="pa in (['none', 'copy_to_clipboard', 'save_to_file'] as PostActionType[])"
+              v-for="pa in ['none', 'copy_to_clipboard', 'save_to_file'] as PostActionType[]"
               :key="pa"
               type="button"
               @click="toolForm.postAction.type = pa"
@@ -312,10 +351,10 @@ function handleClose() {
                 'p-2 rounded border text-xs cursor-pointer transition-colors',
                 toolForm.postAction.type === pa
                   ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                  : 'border-border bg-card text-muted-foreground hover:bg-muted',
               ]"
             >
-              {{ pa === 'none' ? '无动作' : pa === 'copy_to_clipboard' ? '自动复制' : '自动存盘' }}
+              {{ pa === "none" ? "无动作" : pa === "copy_to_clipboard" ? "自动复制" : "自动存盘" }}
             </button>
           </div>
 
@@ -326,22 +365,35 @@ function handleClose() {
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1">
                 <label class="text-[11px] text-muted-foreground">专属子目录名</label>
-                <Input v-model="toolForm.postAction.saveConfig.directory" class="h-8 text-xs font-mono" />
+                <Input
+                  v-model="toolForm.postAction.saveConfig.directory"
+                  class="h-8 text-xs font-mono"
+                />
               </div>
               <div class="space-y-1">
                 <label class="text-[11px] text-muted-foreground">文件扩展名</label>
-                <Input v-model="toolForm.postAction.saveConfig.extension" placeholder="txt" class="h-8 text-xs font-mono" />
+                <Input
+                  v-model="toolForm.postAction.saveConfig.extension"
+                  placeholder="txt"
+                  class="h-8 text-xs font-mono"
+                />
               </div>
             </div>
             <p class="text-[10px] text-muted-foreground">
-              文件将自动以时间戳命名保存，例如：<code>$APP_DATA_DIR/saved/{{ toolForm.postAction.saveConfig.directory }}/YYYY-MM-DD_HH-mm-ss.{{ toolForm.postAction.saveConfig.extension || 'txt' }}</code>
+              文件将自动以时间戳命名保存，例如：<code
+                >$APP_DATA_DIR/saved/{{
+                  toolForm.postAction.saveConfig.directory
+                }}/YYYY-MM-DD_HH-mm-ss.{{ toolForm.postAction.saveConfig.extension || "txt" }}</code
+              >
             </p>
           </div>
         </div>
       </div>
 
       <!-- Footer -->
-      <div class="flex h-12 shrink-0 items-center justify-end space-x-2 border-t border-border px-5 bg-muted/20">
+      <div
+        class="flex h-12 shrink-0 items-center justify-end space-x-2 border-t border-border px-5 bg-muted/20"
+      >
         <Button variant="ghost" size="sm" class="h-7 text-xs cursor-pointer" @click="handleClose">
           取消
         </Button>

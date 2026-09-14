@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   CliExecuteRequest,
   CliExecuteResponse,
@@ -36,6 +37,7 @@ export const tauriApi = {
   saveContentToFile: (request: SaveFileRequest) =>
     invoke<SaveFileResponse>("save_content_to_file", { request }),
   showInFolder: (path: string) => invoke<void>("show_in_folder", { path }),
+  openUrl: (url: string) => openerOpenUrl(url),
 
   // 5. 历史记录管理
   addHistoryRecord: (record: NewHistoryRecord) => invoke<string>("add_history_record", { record }),

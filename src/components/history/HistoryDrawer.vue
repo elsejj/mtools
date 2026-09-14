@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from "vue";
+import { ref, watch, onMounted } from "vue";
 import { useHistoryStore } from "@/stores/history";
 import { usePayloadStore } from "@/stores/payload";
 import { useToolStore } from "@/stores/tools";

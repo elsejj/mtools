@@ -138,7 +138,6 @@ pub fn run() {
           }
         }
       }
-
       app.manage(storage);
 
       let registry = SnifferRegistry::new();
