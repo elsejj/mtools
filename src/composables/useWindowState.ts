@@ -1,5 +1,5 @@
 import { onMounted } from "vue";
-import { tauriApi } from "@/lib/tauri";
+// import { tauriApi } from "@/lib/tauri";
 
 /**
  * 窗口状态管理
