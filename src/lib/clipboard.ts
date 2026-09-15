@@ -1,6 +1,6 @@
 import { marked } from "marked";
 import Prism from "prismjs";
-import { tauriApi } from "./tauri";
+import { writeText, writeHtml } from "@tauri-apps/plugin-clipboard-manager";
 
 // 配置 marked 支持 GFM 表格与代码语法高亮
 marked.setOptions({
@@ -64,7 +64,7 @@ export async function copyContentToClipboard(text: string, asHtml: boolean): Pro
 
     // 1. 优先调用 Tauri 原生剪贴板 write_html（系统级支持，跨平台稳定）
     try {
-      await tauriApi.writeClipboardHtml(html, text);
+      await writeHtml(html, text);
       return;
     } catch (err) {
       console.warn("tauriApi.writeClipboardHtml failed, trying Web Clipboard API:", err);
@@ -88,10 +88,6 @@ export async function copyContentToClipboard(text: string, asHtml: boolean): Pro
     await navigator.clipboard.writeText(text);
   } else {
     // 纯文本/源码模式复制
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      await tauriApi.writeClipboardHtml(text, text);
-    }
+    await writeText(text);
   }
 }

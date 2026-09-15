@@ -13,6 +13,7 @@ import { executeCodeTool } from "@/lib/engines/codeEngine";
 import { streamLLMCompletion } from "@/lib/engines/llmEngine";
 import { useSettingsStore } from "./settings";
 import { usePayloadStore } from "./payload";
+import { copyContentToClipboard } from "@/lib/clipboard";
 
 export const DEFAULT_TOOLS: ToolDefinition[] = [
   {
@@ -559,7 +560,7 @@ export const useToolStore = defineStore("tools", () => {
 
     if (postAction.type === "copy_to_clipboard" || settingsStore.settings.autoCopyResult) {
       try {
-        await navigator.clipboard.writeText(content);
+        await copyContentToClipboard(content, false);
         result.copied = true;
       } catch (e) {
         console.error("PostAction: Failed to copy to clipboard", e);

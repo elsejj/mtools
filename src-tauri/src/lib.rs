@@ -85,7 +85,7 @@ pub fn run() {
         if cmd.eq_ignore_ascii_case("copy") {
           let _ = sendkey::send_keys(sendkey::COPY_KEY);
           // 等待前台软件写入系统剪贴板
-          std::thread::sleep(std::time::Duration::from_millis(90));
+          std::thread::sleep(std::time::Duration::from_millis(200));
         }
       }
 
@@ -97,6 +97,7 @@ pub fn run() {
 
         // 唤起后若存在有效剪切板内容，直接推送到前端
         if let Ok(payload) = process_clipboard_internal(app) {
+          println!("Got clipboard: {:?}", payload);
           let _ = app.emit("payload-ready", payload);
         }
       }
@@ -104,13 +105,10 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .on_window_event(|window, event| {
       match event {
-        tauri::WindowEvent::Resized(size) => {
-          println!("Resized: {:?}", size);
+        tauri::WindowEvent::Resized(_size) => {
           //storage::window::record_window_geometry(window);
         }
-        tauri::WindowEvent::Moved(pos) => {
-          println!("Moved: {:?}", pos);
-        }
+        tauri::WindowEvent::Moved(_pos) => {}
         tauri::WindowEvent::CloseRequested { api, .. } => {
           // 点击关闭按钮时隐藏至系统托盘，不直接杀掉应用进程
           api.prevent_close();

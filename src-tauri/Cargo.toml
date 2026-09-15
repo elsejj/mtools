@@ -38,7 +38,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1
-lto = true
+lto = false
 opt-level = 3
 panic = "abort"
 strip = true
