@@ -9,16 +9,15 @@
 //const YDOTOOL_PERMISSIONS: &str = "0666";
 
 use std::{
-  cell::OnceCell,
-  fmt::format,
   process::Command,
-  sync::{Mutex, OnceLock, RwLock},
+  sync::{Mutex, OnceLock},
 };
 
 use mouse_keyboard_input::VirtualDevice;
 
 use crate::sendkey::keymap_linux::KeyState;
 
+#[allow(dead_code)]
 pub(crate) fn send_keys(keys: &str) -> Result<(), String> {
   // use ydotool to send keys
   let mut command = Command::new("ydotool");
@@ -51,7 +50,7 @@ pub(crate) fn send_keys_native(keys: &str) -> Result<(), String> {
 
   let vk = VK.get_or_init(|| Mutex::new(VirtualDevice::default().ok()));
 
-  let mut guard = vk.lock().map_err(|e| "virtual keyboard busy")?;
+  let mut guard = vk.lock().map_err(|_e| "virtual keyboard busy")?;
 
   if let Some(sender) = guard.as_mut() {
     for (action, code) in keys {
