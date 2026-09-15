@@ -116,6 +116,12 @@
     sudo apt-get update
     sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
     ```
+- **系统按键模拟权限 (System Input Permissions)**:
+  mtools 依赖模拟按键实现划词快速捕获剪贴板内容。由于现代操作系统对跨进程合成按键设有严格安全策略，使用前需完成相应授权：
+  - **Linux**: 需将当前用户加入 `input` 用户组以访问 `/dev/uinput`：`sudo usermod -a -G input $USER`，配置完成后**需重启系统或重新登录**生效；
+  - **macOS**: 需在「系统设置 -> 隐私与安全性 -> 辅助功能」中勾选授予 `mtools`（本地开发调试时需勾选发起命令的终端或编辑器）权限；
+  - **Windows**: 普通权限开箱即用（若在管理员权限窗口中取词，mtools 亦需以管理员模式运行）；
+  - 📖 完整配置步骤与故障排查请参阅：**[跨平台模拟按键前置权限说明 (design/sendkey-prerequisites.md)](./design/sendkey-prerequisites.md)**。
 
 ---
 
@@ -174,8 +180,10 @@ bun run tauri build
 
 1. 当你按下快捷键时，系统执行 `mtools copy`；
 2. mtools 单例插件接收到二级参数 `copy`；
-3. 后端自动模拟释放当前按键并触发 `Ctrl+C` 写入剪贴板；
+3. 后端自动模拟释放当前按键并触发复制快捷键写入剪贴板；
 4. 等待剪贴板写入完成后自动捕获、解码并唤醒置顶 mtools 窗口展示结果！
+
+> ⚠️ **注意**：如果按下快捷键后窗口呼出但未能获取到选中文本，通常是因为操作系统未授予模拟按键权限（如 Linux 未加入 `input` 组并重启，或 macOS 未授予「辅助功能」权限）。请参考 **[跨平台模拟按键前置权限说明 (design/sendkey-prerequisites.md)](./design/sendkey-prerequisites.md)** 检查配置。
 
 ---
 

@@ -49,6 +49,11 @@
    - 6 个开发推进阶段详细路线图
    - 包含 Rust 基础建设、前置解码、可扩展嗅探 Trait、前端展现、工具生态到端到端联调验证的完整 Checklists
 
+7. **[跨平台模拟按键与系统权限配置 (sendkey-prerequisites.md)](./sendkey-prerequisites.md)**
+   - Linux 环境基于 `uinput` 的用户组（`input` 组）与 udev 规则配置
+   - macOS TCC 辅助功能（Accessibility）授权与开发调试注意事项
+   - Windows UIPI 权限隔离说明与各平台快捷键差异速查
+
 ---
 
 ## 核心设计决策概要汇总

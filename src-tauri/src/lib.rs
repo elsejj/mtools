@@ -97,7 +97,7 @@ pub fn run() {
 
         // 唤起后若存在有效剪切板内容，直接推送到前端
         if let Ok(payload) = process_clipboard_internal(app) {
-          println!("Got clipboard: {:?}", payload);
+          // println!("Got clipboard: {:?}", payload);
           let _ = app.emit("payload-ready", payload);
         }
       }

@@ -33,6 +33,7 @@ tokio = { version = "1", features = ["process", "time", "sync"] }
 regex = "1.10"
 dirs = "5.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
+mouse-keyboard-input = "0.9.1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -45,3 +46,7 @@ strip = true
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"
+
