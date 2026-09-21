@@ -1,4 +1,4 @@
-export type PayloadType = 'text' | 'image' | 'files';
+export type PayloadType = "text" | "image" | "files";
 
 export interface TextMetadata {
   charCount: number;
@@ -19,7 +19,7 @@ export interface ImageMetadata {
 export interface PreprocessedResult {
   formattedText?: string;
   diffSource?: string;
-  suggestedOutputType: 'json' | 'text' | 'markdown' | 'image';
+  suggestedOutputType: "json" | "text" | "markdown" | "image";
 }
 
 export interface ToolScoreItem {
@@ -42,9 +42,9 @@ export interface EnrichedPayload {
 
 // ----------------- Tool Definition -----------------
 
-export type ToolType = 'code' | 'llm' | 'cli';
+export type ToolType = "code" | "llm" | "cli";
 
-export type PostActionType = 'none' | 'copy_to_clipboard' | 'save_to_file';
+export type PostActionType = "none" | "copy_to_clipboard" | "save_to_file";
 
 export interface SaveToFileConfig {
   directory: string;
@@ -68,7 +68,7 @@ export interface ToolMatcher {
 
 export interface CodeToolConfig {
   script: string;
-  outputType: 'text' | 'json' | 'markdown' | 'diff';
+  outputType: "text" | "json" | "markdown" | "diff";
 }
 
 export interface LLMToolConfig {
@@ -85,7 +85,7 @@ export interface CLIToolConfig {
   command: string;
   args: string[];
   workingDir?: string;
-  stdinMode: 'pipe' | 'none';
+  stdinMode: "pipe" | "none";
   timeoutMs: number;
   env?: Record<string, string>;
 }
@@ -95,7 +95,7 @@ export interface ToolDefinition {
   name: string;
   icon: string;
   description: string;
-  category: 'developer' | 'text' | 'ai' | 'utilities';
+  category: "developer" | "text" | "ai" | "utilities";
   isCustom: boolean;
   enabled: boolean;
   sortOrder: number;
@@ -120,7 +120,7 @@ export interface HistoryRecordItem {
   outputContent?: string;
   postActionType: string;
   outputFilePath?: string;
-  status: 'success' | 'error' | 'running';
+  status: "success" | "error" | "running";
   durationMs: number;
   createdAt: number;
 }
@@ -154,12 +154,19 @@ export interface LLMProvider {
   defaultModel: string;
 }
 
+export interface EvaluationModelConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
 export interface SystemSettings {
-  theme: 'light' | 'dark' | 'system';
+  theme: "light" | "dark" | "system";
   autoCopyResult: boolean;
   closeWindowOnCopy: boolean;
   defaultProviderId: string;
   providers: LLMProvider[];
+  evaluationModel?: EvaluationModelConfig;
 }
 
 export interface WindowGeometry {
@@ -204,4 +211,3 @@ export interface ImageCacheStats {
   fileCount: number;
   directoryPath: string;
 }
-

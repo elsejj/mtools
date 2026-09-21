@@ -669,3 +669,147 @@ fn test_scenario_13_single_image_file_path_routes_to_ocr_not_calculator() {
 
   let _ = std::fs::remove_file(image_path);
 }
+
+#[tokio::test]
+async fn test_scenario_14_fixed_rules_bypass_evaluation_model() {
+  let temp_dir = std::env::temp_dir().join(format!("mtools_test_14_{}", uuid::Uuid::new_v4()));
+  let storage = AppStorage::init(temp_dir.clone()).unwrap();
+
+  // Configure evaluation model with a mock URL that would fail if connected
+  {
+    let conn = storage.db.lock().unwrap();
+    let settings = serde_json::json!({
+      "evaluationModel": {
+        "baseUrl": "http://127.0.0.1:9999/systemone",
+        "apiKey": "test-key",
+        "model": "jev-latest"
+      }
+    });
+    mtools_lib::storage::config::save_system_config(&conn, &settings).unwrap();
+  }
+
+  let registry = SnifferRegistry::new();
+  let valid_json = r#"{"hello": "world"}"#;
+  let sniff_input = SniffInput::Text(valid_json);
+
+  // Fixed rules (JsonSniffer) should match immediately (confidence >= 0.80) without calling Jev
+  let enriched = registry
+    .execute_async(
+      &sniff_input,
+      valid_json.to_string(),
+      valid_json.to_string(),
+      Vec::new(),
+      None,
+      Some(&storage),
+    )
+    .await;
+
+  assert_eq!(enriched.recommended_tool_id, "json-formatter");
+  assert!(enriched.tags.contains(&"format-json".to_string()));
+  assert!(!enriched.tags.contains(&"jev-choice".to_string()));
+
+  let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[tokio::test]
+async fn test_scenario_15_jev_choice_evaluation_routing() {
+  std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+  std::env::set_var("no_proxy", "127.0.0.1,localhost");
+
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  use tokio::net::TcpListener;
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_addr = listener.local_addr().unwrap();
+
+  // Spawn mock HTTP server for TypeSafe Choice API
+  tokio::spawn(async move {
+    if let Ok((mut socket, _)) = listener.accept().await {
+      let mut buf = [0u8; 4096];
+      let n = socket.read(&mut buf).await.unwrap();
+      let req_str = String::from_utf8_lossy(&buf[..n]);
+
+      // Check request headers and body
+      assert!(req_str.contains("POST /systemone"));
+      assert!(req_str.contains("Bearer mock-api-key"));
+      assert!(req_str.contains("\"type\":\"choice\""));
+      assert!(req_str.contains("calculator"));
+      assert!(req_str.contains("json-formatter"));
+
+      let response_body = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+          "tool_choice": {
+            "type": "choice",
+            "choice": "calculator",
+            "probabilities": {
+              "calculator": 0.88,
+              "llm-translate": 0.08,
+              "json-formatter": 0.04
+            },
+            "confidence": 0.84
+          }
+        },
+        "usage": { "input_tokens": 120, "output_tokens": 25 }
+      })
+      .to_string();
+
+      let http_res = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        response_body.len(),
+        response_body
+      );
+      socket.write_all(http_res.as_bytes()).await.unwrap();
+    }
+  });
+
+  let temp_dir = std::env::temp_dir().join(format!("mtools_test_15_{}", uuid::Uuid::new_v4()));
+  let storage = AppStorage::init(temp_dir.clone()).unwrap();
+
+  // Configure evaluation model pointing to our mock server
+  {
+    let conn = storage.db.lock().unwrap();
+    let settings = serde_json::json!({
+      "evaluationModel": {
+        "baseUrl": format!("http://{}", local_addr),
+        "apiKey": "mock-api-key",
+        "model": "jev-latest"
+      }
+    });
+    mtools_lib::storage::config::save_system_config(&conn, &settings).unwrap();
+  }
+
+  let registry = SnifferRegistry::new();
+  // Natural language ambiguous text where fixed rules cannot determine
+  let ambiguous_text = "帮我算一下这笔帐目支出合计";
+  let sniff_input = SniffInput::Text(ambiguous_text);
+
+  let enriched = registry
+    .execute_async(
+      &sniff_input,
+      ambiguous_text.to_string(),
+      ambiguous_text.to_string(),
+      Vec::new(),
+      None,
+      Some(&storage),
+    )
+    .await;
+
+  assert_eq!(
+    enriched.recommended_tool_id, "calculator",
+    "Jev choice should recommend calculator"
+  );
+  assert!(
+    enriched.tags.contains(&"jev-choice".to_string()),
+    "Tags should contain jev-choice"
+  );
+  assert!(
+    enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "calculator" && s.score >= 80.0),
+    "Calculator candidate score should be >= 80"
+  );
+
+  let _ = std::fs::remove_dir_all(&temp_dir);
+}

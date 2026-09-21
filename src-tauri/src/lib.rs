@@ -25,7 +25,7 @@ pub fn rgba_to_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, Stri
   Ok(buf)
 }
 
-pub fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<EnrichedPayload, String> {
+pub async fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<EnrichedPayload, String> {
   let storage = app.state::<AppStorage>();
   let registry = app.state::<SnifferRegistry>();
   let clipboard = app.clipboard();
@@ -40,7 +40,18 @@ pub fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<EnrichedPayl
           trace,
         } => {
           let input = SniffInput::Text(&dec_text);
-          Ok(registry.execute(&input, text.clone(), dec_text.clone(), trace, None))
+          Ok(
+            registry
+              .execute_async(
+                &input,
+                text.clone(),
+                dec_text.clone(),
+                trace,
+                None,
+                Some(&storage),
+              )
+              .await,
+          )
         }
         decoder::DecodedOutput::Image {
           bytes,
@@ -50,11 +61,33 @@ pub fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<EnrichedPayl
           let rel_path = storage::cache::save_image_cache(&storage.data_dir, &bytes).ok();
           let input = SniffInput::Image(&bytes);
           let base64_str = format!("data:image/png;base64,{}", BASE64_STANDARD.encode(&bytes));
-          Ok(registry.execute(&input, text.clone(), base64_str, trace, rel_path))
+          Ok(
+            registry
+              .execute_async(
+                &input,
+                text.clone(),
+                base64_str,
+                trace,
+                rel_path,
+                Some(&storage),
+              )
+              .await,
+          )
         }
         decoder::DecodedOutput::PassThrough => {
           let input = SniffInput::Text(&text);
-          Ok(registry.execute(&input, text.clone(), text.clone(), Vec::new(), None))
+          Ok(
+            registry
+              .execute_async(
+                &input,
+                text.clone(),
+                text.clone(),
+                Vec::new(),
+                None,
+                Some(&storage),
+              )
+              .await,
+          )
         }
       };
     }
@@ -70,7 +103,18 @@ pub fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<EnrichedPayl
       BASE64_STANDARD.encode(&png_bytes)
     );
     let input = SniffInput::Image(&png_bytes);
-    return Ok(registry.execute(&input, base64_str.clone(), base64_str, Vec::new(), rel_path));
+    return Ok(
+      registry
+        .execute_async(
+          &input,
+          base64_str.clone(),
+          base64_str,
+          Vec::new(),
+          rel_path,
+          Some(&storage),
+        )
+        .await,
+    );
   }
 
   Err("Clipboard is empty or unsupported format".to_string())
@@ -80,6 +124,7 @@ pub fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<EnrichedPayl
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_clipboard_manager::init())
+    .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
       if let Some(cmd) = args.get(1) {
         if cmd.eq_ignore_ascii_case("copy") {
@@ -96,10 +141,13 @@ pub fn run() {
         let _ = app.emit("launch", &args);
 
         // 唤起后若存在有效剪切板内容，直接推送到前端
-        if let Ok(payload) = process_clipboard_internal(app) {
-          // println!("Got clipboard: {:?}", payload);
-          let _ = app.emit("payload-ready", payload);
-        }
+        let app_handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+          if let Ok(payload) = process_clipboard_internal(&app_handle).await {
+            // println!("Got clipboard: {:?}", payload);
+            let _ = app_handle.emit("payload-ready", payload);
+          }
+        });
       }
     }))
     .plugin(tauri_plugin_opener::init())

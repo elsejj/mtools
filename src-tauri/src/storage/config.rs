@@ -118,3 +118,98 @@ pub fn delete_tool_config(conn: &Connection, tool_id: &str) -> Result<(), String
     .map_err(|e| format!("Failed to delete custom tool: {}", e))?;
   Ok(())
 }
+
+pub const DEFAULT_TOOLS_INFO: &[(&str, &str, &str)] = &[
+  (
+    "json-formatter",
+    "JSON 格式化",
+    "格式化并高亮 JSON 字符串，验证语法有效性",
+  ),
+  (
+    "jwt-inspector",
+    "JWT 解析",
+    "解析 JWT Token 结构，查看 Header 与 Payload 声明",
+  ),
+  (
+    "timestamp-converter",
+    "时间戳转换",
+    "Unix 秒/毫秒时间戳与本地可读时间互转",
+  ),
+  (
+    "calculator",
+    "计算器",
+    "支持中英文数量单位（K/M/G/万/亿等）的智能表达式计算器",
+  ),
+  (
+    "url-codec",
+    "URL 编解码",
+    "URL Encode/Decode 与 Query 参数结构化解析",
+  ),
+  (
+    "ocr-extractor",
+    "OCR 识图提取",
+    "多模态 AI 识别并提取图片中的所有排版文字",
+  ),
+  (
+    "llm-translate",
+    "AI 翻译与润色",
+    "中英双语即时翻译与文案表达润色",
+  ),
+  (
+    "cli-runner",
+    "外部 CLI",
+    "通过管道将输入数据传递给本地命令行工具 (如 jq/cat)",
+  ),
+];
+
+pub fn get_evaluation_config(conn: &Connection) -> crate::models::EvaluationModelConfig {
+  if let Ok(val) = get_system_config(conn) {
+    if let Some(eval_val) = val.get("evaluationModel") {
+      if let Ok(cfg) =
+        serde_json::from_value::<crate::models::EvaluationModelConfig>(eval_val.clone())
+      {
+        return cfg;
+      }
+    }
+  }
+  crate::models::EvaluationModelConfig::default()
+}
+
+pub fn get_enabled_tool_descriptions(conn: &Connection) -> Vec<(String, String)> {
+  use std::collections::HashMap;
+
+  let mut tool_map: HashMap<String, (String, bool)> = HashMap::new();
+  for (id, _name, desc) in DEFAULT_TOOLS_INFO {
+    tool_map.insert(id.to_string(), (desc.to_string(), true));
+  }
+
+  if let Ok(val) = get_tools_config(conn) {
+    if let Some(arr) = val.as_array() {
+      for item in arr {
+        if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+          let enabled = item
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+          let desc = item
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+          if !desc.is_empty() {
+            tool_map.insert(id.to_string(), (desc.to_string(), enabled));
+          } else if let Some(existing) = tool_map.get_mut(id) {
+            existing.1 = enabled;
+          }
+        }
+      }
+    }
+  }
+
+  let mut list: Vec<(String, String)> = tool_map
+    .into_iter()
+    .filter(|(_, (_, enabled))| *enabled)
+    .map(|(id, (desc, _))| (id, desc))
+    .collect();
+  list.sort_by(|a, b| a.0.cmp(&b.0));
+  list
+}

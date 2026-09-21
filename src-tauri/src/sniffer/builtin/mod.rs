@@ -1,5 +1,6 @@
 pub mod calc;
 pub mod image;
+pub mod jev;
 pub mod json;
 pub mod jwt;
 pub mod regex;

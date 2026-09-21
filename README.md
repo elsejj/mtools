@@ -43,7 +43,10 @@
 
 ### 🎯 3. 插件化特征嗅探与智能路由 (Sniffer & Smart Routing)
 
-- **Rust 原生高速嗅探链**：内置 JSON、JWT、URL、时间戳/日期、中英文单位表达式、图片魔数、动态正则与纯文本嗅探器。
+mtools 创新性地构建了**「确定性规则优先 + 语义意图判定兜底」**的双层级路由架构：
+
+- **第一层：Rust 原生高速规则嗅探链**：内置 JSON、JWT、URL、时间戳/日期、中英文单位表达式、图片魔数、动态正则嗅探器。命中即直达目标工具，纳秒级响应，**零网络请求与零 Token 消耗**。
+- **第二层：基于 TypeSafe AI `jev-latest` 的意图判定模型**：当剪贴板为纯文本且固定规则无法判定时（如自然语言提问、翻译需求、业务文本），系统会自动提取当前所有已启用工具的功能描述，实时组装调用 TypeSafe AI Choice API（`jev-latest` 模型），根据返回的概率分布智能判定最契合的工具并自适应跳转推荐。
 - **智能置信度打分算法**：根据输入特征实时为每个工具动态打分。例如输入标准 JSON 自动置顶「JSON 格式化」，输入图片自动聚焦「OCR 识图提取」。
 - **毫秒级自适应纠偏**：即使当前停留在不匹配工具，也能无缝纠偏至最匹配项；同时提供快捷候选栏，通过 `Alt + 1~9` 一键切换候选工具。
 
@@ -207,7 +210,7 @@ mtools 总体架构
     ├── src/
     │   ├── cli/          # 外部子进程管道执行引擎 (stdin/stdout)
     │   ├── decoder/      # 前置解码链 (Base64/Hex/URL/文件路径反解)
-    │   ├── sniffer/      # 插件化特征嗅探器 (JSON, JWT, URL, Time, Calc, Image 等)
+    │   ├── sniffer/      # 插件化特征嗅探器 (JSON, JWT, URL, Time, Calc, Image, Jev Choice 判定等)
     │   ├── storage/      # SQLite 数据库引擎、图片文件缓存、窗口几何记忆
     │   ├── post_action/  # 后置动作执行器 (存盘与文件管理器呼出)
     │   ├── sendkey/      # 模拟按键与系统剪贴板协同
@@ -219,9 +222,13 @@ mtools 总体架构
 
 ---
 
-## 🤖 大模型接入指南 (LLM Setup)
+## 🤖 AI 大模型与意图判定接入指南 (AI & Evaluation Setup)
 
-在 mtools 的「设置 (`Ctrl+,`)」页面中，你可以配置 OpenAI 兼容的 API 供应商：
+在 mtools 的「系统设置 (`Ctrl+,`) -> AI 模型」中，你可以分别配置用于**内容生成的多模态通用大模型**与用于**文本意图理解的判定模型**：
+
+### 1. 通用 LLM 文本/多模态模型 (OpenAI 兼容协议)
+
+用于驱动「OCR 识图提取」、「AI 翻译与润色」及用户自定义的 LLM 工具：
 
 - **DeepSeek**：
   - Base URL: `https://api.deepseek.com/v1`
@@ -233,6 +240,41 @@ mtools 总体架构
   - Base URL: `http://localhost:11434/v1`
   - 默认模型: `llama3.2-vision` / `qwen2.5`
 - **其他兼容服务**：Moonshot (Kimi)、零一万物、阿里百炼、SiliconFlow 等只要兼容 OpenAI 标准的接口均可无缝填入。
+
+### 2. 智能意图判定模型 (TypeSafe AI / Jev Choice API)
+
+当系统接收到非结构化文本、且所有本地固定格式规则（JSON、时间戳、算式等）均无法判定时，mtools 可调用专用的意图判定模型对输入文本进行语义归类，自动匹配最合适的工具。
+
+- **核心工作原理**：
+  1. **按需判定与成本节省**：若输入已符合固定规则（如 JSON、URL、时间戳等），系统直接以高置信度命中并路由，**绝对不调用判定模型**，既保障了毫秒级响应，又避免浪费 API 调用额度；
+  2. **动态候选列表生成**：判定模型被触发时，系统会实时提取当前数据库中所有**已启用工具**的名称与功能描述，动态构建 Choice API 标准的候选选项（`criteria: { tool_id: description }`）；
+  3. **Choice API 语义评估**：向 [TypeSafe AI Choice API](https://docs.typesafe.ai/api#choice) 发起结构化判定请求：
+     ```json
+     {
+       "state": "<输入文本内容>",
+       "model": "jev-latest",
+       "questions": {
+         "tool_choice": {
+           "type": "choice",
+           "instructions": "根据输入文本的内容和意图，从候选工具列表中选择最适合处理该输入的工具。",
+           "criteria": {
+             "json-formatter": "格式化并高亮 JSON 字符串，验证语法有效性",
+             "calculator": "支持中英文数量单位（K/M/G/万/亿等）的智能表达式计算器",
+             "llm-translate": "中英双语即时翻译与文案表达润色"
+             ...
+           }
+         }
+       }
+     }
+     ```
+  4. **概率分布驱动路由**：解析返回的 `choice` 作为推荐工具，并将各候选概率（`probabilities`）映射为置信度得分展示在备选列表，实现精准自适应分发。
+- **配置方式 (系统设置 -> AI 模型 -> 意图判定模型)**：
+  - **API 接口地址 (Base URL)**：`https://api.typesafe.ai/v1/systemone`（系统会自动规范化补齐 `/systemone`）
+  - **API 密钥 (API Key)**：在 TypeSafe AI 平台申请的 API 密钥
+  - **模型名称 (Model)**：`jev-latest`（默认）
+- **连通性探测与跨域保障**：
+  - 提供「测试连接」按钮，采用 Tauri 原生 HTTP 客户端插件发起探测并实时测算往返网络延迟，无任何浏览器 CORS 跨域烦扰；
+  - 若未配置 API Key 或端点，系统将自动回退至本地语言分析与保底推荐，不影响任何离线基础功能的使用。
 
 ---
 

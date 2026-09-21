@@ -45,9 +45,12 @@ pub fn setup_system_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Err
         if let Some(w) = app.get_webview_window("main") {
           let _ = w.show();
           let _ = w.set_focus();
-          if let Ok(payload) = crate::process_clipboard_internal(app) {
-            let _ = app.emit("payload-ready", payload);
-          }
+          let app_clone = app.clone();
+          tauri::async_runtime::spawn(async move {
+            if let Ok(payload) = crate::process_clipboard_internal(&app_clone).await {
+              let _ = app_clone.emit("payload-ready", payload);
+            }
+          });
         }
       }
       "quit" => {

@@ -165,3 +165,36 @@ pub struct WindowGeometry {
   pub height: u32,
   pub is_maximized: bool,
 }
+
+// ----------------- Evaluation Model Config -----------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluationModelConfig {
+  #[serde(default)]
+  pub base_url: String,
+  #[serde(default)]
+  pub api_key: String,
+  #[serde(default = "default_jev_model")]
+  pub model: String,
+}
+
+fn default_jev_model() -> String {
+  "jev-latest".to_string()
+}
+
+impl Default for EvaluationModelConfig {
+  fn default() -> Self {
+    Self {
+      base_url: "https://api.typesafe.ai/v1/systemone".to_string(),
+      api_key: String::new(),
+      model: default_jev_model(),
+    }
+  }
+}
+
+impl EvaluationModelConfig {
+  pub fn is_enabled(&self) -> bool {
+    !self.base_url.trim().is_empty() && !self.api_key.trim().is_empty()
+  }
+}

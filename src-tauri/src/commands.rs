@@ -64,7 +64,7 @@ pub async fn read_clipboard_image_base64(app: tauri::AppHandle) -> Result<Option
 // 2. 嗅探与预处理
 #[tauri::command]
 pub async fn fetch_and_process_clipboard(app: tauri::AppHandle) -> Result<EnrichedPayload, String> {
-  crate::process_clipboard_internal(&app)
+  crate::process_clipboard_internal(&app).await
 }
 
 #[derive(serde::Deserialize)]
@@ -89,7 +89,18 @@ pub async fn process_custom_content(
       trace,
     } => {
       let input = sniffer::SniffInput::Text(&dec_text);
-      Ok(registry.execute(&input, text.clone(), dec_text.clone(), trace, None))
+      Ok(
+        registry
+          .execute_async(
+            &input,
+            text.clone(),
+            dec_text.clone(),
+            trace,
+            None,
+            Some(&storage),
+          )
+          .await,
+      )
     }
     decoder::DecodedOutput::Image {
       bytes,
@@ -99,11 +110,33 @@ pub async fn process_custom_content(
       let rel_path = storage::cache::save_image_cache(&storage.data_dir, &bytes).ok();
       let input = sniffer::SniffInput::Image(&bytes);
       let base64_str = format!("data:image/png;base64,{}", BASE64_STANDARD.encode(&bytes));
-      Ok(registry.execute(&input, text.clone(), base64_str, trace, rel_path))
+      Ok(
+        registry
+          .execute_async(
+            &input,
+            text.clone(),
+            base64_str,
+            trace,
+            rel_path,
+            Some(&storage),
+          )
+          .await,
+      )
     }
     decoder::DecodedOutput::PassThrough => {
       let input = sniffer::SniffInput::Text(&text);
-      Ok(registry.execute(&input, text.clone(), text.clone(), Vec::new(), None))
+      Ok(
+        registry
+          .execute_async(
+            &input,
+            text.clone(),
+            text.clone(),
+            Vec::new(),
+            None,
+            Some(&storage),
+          )
+          .await,
+      )
     }
   }
 }

@@ -1,9 +1,5 @@
-import type {
-  ToolDefinition,
-  EnrichedPayload,
-  SystemSettings,
-  LLMProvider,
-} from '@/types';
+import { fetch } from "@tauri-apps/plugin-http";
+import type { ToolDefinition, EnrichedPayload, SystemSettings, LLMProvider } from "@/types";
 
 export interface LLMStreamOptions {
   onToken: (chunk: string) => void;
@@ -17,7 +13,7 @@ export interface LLMStreamOptions {
  */
 export function resolveLLMConfig(
   tool: ToolDefinition,
-  settings: SystemSettings
+  settings: SystemSettings,
 ): { provider: LLMProvider; model: string; temperature: number } {
   const llmConfig = tool.llmConfig;
   const providers = settings.providers || [];
@@ -29,18 +25,17 @@ export function resolveLLMConfig(
   }
 
   if (!provider) {
-    provider =
-      providers.find((p) => p.id === settings.defaultProviderId) ||
+    provider = providers.find((p) => p.id === settings.defaultProviderId) ||
       providers[0] || {
-        id: 'default',
-        name: 'Default',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: '',
-        defaultModel: 'gpt-4o',
+        id: "default",
+        name: "Default",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: "",
+        defaultModel: "gpt-4o",
       };
   }
 
-  const model = llmConfig?.customModel || provider.defaultModel || 'gpt-4o';
+  const model = llmConfig?.customModel || provider.defaultModel || "gpt-4o";
   const temperature = llmConfig?.temperature ?? 0.7;
 
   return { provider, model, temperature };
@@ -52,54 +47,54 @@ export function resolveLLMConfig(
 export function buildMessages(tool: ToolDefinition, payload: EnrichedPayload): any[] {
   const llmConfig = tool.llmConfig;
   const systemPrompt =
-    llmConfig?.systemPrompt || '你是一个专业高效的助手。请严谨、准确地直接输出处理结果。';
-  const userTemplate = llmConfig?.userPromptTemplate || '{{input}}';
+    llmConfig?.systemPrompt || "你是一个专业高效的助手。请严谨、准确地直接输出处理结果。";
+  const userTemplate = llmConfig?.userPromptTemplate || "{{input}}";
 
   const messages: any[] = [
     {
-      role: 'system',
+      role: "system",
       content: systemPrompt,
     },
   ];
 
-  if (payload.payloadType === 'image') {
+  if (payload.payloadType === "image") {
     // Multimodal image payload
-    let imageUrl = '';
-    if (payload.rawOriginal && payload.rawOriginal.startsWith('data:image/')) {
+    let imageUrl = "";
+    if (payload.rawOriginal && payload.rawOriginal.startsWith("data:image/")) {
       imageUrl = payload.rawOriginal;
-    } else if (payload.actualContent && payload.actualContent.startsWith('data:image/')) {
+    } else if (payload.actualContent && payload.actualContent.startsWith("data:image/")) {
       imageUrl = payload.actualContent;
     } else {
       // If cached image, use placeholder or data URL
       imageUrl = payload.actualContent;
     }
 
-    const textPrompt = userTemplate.replace('{{input}}', '').trim() || '请识别并处理以下图片内容：';
+    const textPrompt = userTemplate.replace("{{input}}", "").trim() || "请识别并处理以下图片内容：";
 
     messages.push({
-      role: 'user',
+      role: "user",
       content: [
         {
-          type: 'text',
+          type: "text",
           text: textPrompt,
         },
         {
-          type: 'image_url',
+          type: "image_url",
           image_url: {
             url: imageUrl,
-            detail: 'high',
+            detail: "high",
           },
         },
       ],
     });
   } else {
     // Pure text payload
-    const textContent = userTemplate.includes('{{input}}')
-      ? userTemplate.replace('{{input}}', payload.actualContent)
+    const textContent = userTemplate.includes("{{input}}")
+      ? userTemplate.replace("{{input}}", payload.actualContent)
       : `${userTemplate}\n\n${payload.actualContent}`;
 
     messages.push({
-      role: 'user',
+      role: "user",
       content: textContent,
     });
   }
@@ -114,32 +109,32 @@ export async function streamLLMCompletion(
   tool: ToolDefinition,
   payload: EnrichedPayload,
   settings: SystemSettings,
-  options: LLMStreamOptions
+  options: LLMStreamOptions,
 ): Promise<string> {
   const { provider, model, temperature } = resolveLLMConfig(tool, settings);
   const messages = buildMessages(tool, payload);
 
-  let fullResponse = '';
+  let fullResponse = "";
 
   // Clean baseUrl
   let url = provider.baseUrl.trim();
-  if (url.endsWith('/')) {
+  if (url.endsWith("/")) {
     url = url.slice(0, -1);
   }
-  if (!url.endsWith('/chat/completions')) {
+  if (!url.endsWith("/chat/completions")) {
     url = `${url}/chat/completions`;
   }
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
   if (provider.apiKey) {
-    headers['Authorization'] = `Bearer ${provider.apiKey}`;
+    headers["Authorization"] = `Bearer ${provider.apiKey}`;
   }
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify({
         model,
@@ -165,30 +160,30 @@ export async function streamLLMCompletion(
     }
 
     if (!response.body) {
-      throw new Error('服务商未返回可读数据流');
+      throw new Error("服务商未返回可读数据流");
     }
 
     const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
+        if (!trimmed || trimmed.startsWith(":")) continue;
 
-        if (trimmed === 'data: [DONE]') {
+        if (trimmed === "data: [DONE]") {
           break;
         }
 
-        if (trimmed.startsWith('data: ')) {
+        if (trimmed.startsWith("data: ")) {
           const jsonStr = trimmed.slice(6).trim();
           try {
             const data = JSON.parse(jsonStr);
@@ -207,8 +202,8 @@ export async function streamLLMCompletion(
     options.onComplete?.(fullResponse);
     return fullResponse;
   } catch (err: any) {
-    if (err.name === 'AbortError') {
-      console.log('LLM 请求被用户中断');
+    if (err.name === "AbortError") {
+      console.log("LLM 请求被用户中断");
       options.onComplete?.(fullResponse);
       return fullResponse;
     }
@@ -216,4 +211,3 @@ export async function streamLLMCompletion(
     throw err;
   }
 }
-

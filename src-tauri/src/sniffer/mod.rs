@@ -62,7 +62,7 @@ impl SnifferRegistry {
       .sort_by(|a, b| b.priority().cmp(&a.priority()));
   }
 
-  /// 调度执行责任链并聚合产物为 EnrichedPayload
+  /// 调度执行责任链并聚合产物为 EnrichedPayload (同步模式)
   pub fn execute(
     &self,
     input: &SniffInput,
@@ -108,6 +108,195 @@ impl SnifferRegistry {
               recommended_tool_id = tool_id;
             }
             detected_format = sniffer.id().replace("-sniffer", "");
+          }
+        }
+      }
+    }
+
+    if !decoding_trace.is_empty() {
+      for trace in &decoding_trace {
+        combined_tags.push(format!("decoded-from-{}", trace));
+      }
+    }
+
+    let now = chrono::Utc::now().timestamp_millis();
+    let id = uuid::Uuid::new_v4().to_string();
+
+    match input {
+      SniffInput::Text(t) => {
+        let meta = TextMetadata {
+          char_count: t.chars().count(),
+          line_count: t.lines().count().max(1),
+          detected_format,
+          decoding_trace,
+        };
+        EnrichedPayload {
+          id,
+          payload_type: PayloadType::Text,
+          raw_original,
+          actual_content,
+          metadata: json!(meta),
+          tags: combined_tags,
+          preprocessed_result: selected_preprocessed,
+          recommended_tool_id,
+          candidate_tool_scores: candidate_scores,
+          created_at: now,
+        }
+      }
+      SniffInput::Image(bytes) => {
+        let local_path = image_local_cache_path.unwrap_or_default();
+        let mime_type =
+          crate::decoder::detect_image_mime(bytes).unwrap_or_else(|| "image/png".to_string());
+        let (width, height) = if bytes.len() >= 24 && &bytes[0..8] == b"\x89PNG\r\n\x1a\n" {
+          (
+            u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]),
+            u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]),
+          )
+        } else {
+          (0, 0)
+        };
+        let meta = crate::models::ImageMetadata {
+          width,
+          height,
+          mime_type,
+          byte_size: bytes.len(),
+          local_cache_path: local_path,
+          decoding_trace,
+        };
+        EnrichedPayload {
+          id,
+          payload_type: PayloadType::Image,
+          raw_original,
+          actual_content,
+          metadata: json!(meta),
+          tags: combined_tags,
+          preprocessed_result: selected_preprocessed,
+          recommended_tool_id,
+          candidate_tool_scores: candidate_scores,
+          created_at: now,
+        }
+      }
+    }
+  }
+
+  /// 调度执行责任链并聚合产物为 EnrichedPayload (异步模式，支持判定模型)
+  pub async fn execute_async(
+    &self,
+    input: &SniffInput<'_>,
+    raw_original: String,
+    actual_content: String,
+    decoding_trace: Vec<String>,
+    image_local_cache_path: Option<String>,
+    storage: Option<&crate::storage::AppStorage>,
+  ) -> EnrichedPayload {
+    let mut combined_tags = Vec::new();
+    let mut best_confidence = 0.0f32;
+    let mut selected_preprocessed = None;
+    let mut recommended_tool_id = match input {
+      SniffInput::Image(_) => "ocr-extractor".to_string(),
+      SniffInput::Text(_) => "llm-translate".to_string(),
+    };
+    let mut candidate_scores = Vec::new();
+    let mut detected_format = "plain".to_string();
+
+    // 1. 运行固定规则嗅探器 (非 text-sniffer)
+    for sniffer in &self.sniffers {
+      if sniffer.id() == "text-sniffer" {
+        continue;
+      }
+      if sniffer.supports(input) {
+        let output = sniffer.sniff(input);
+        if output.matched {
+          combined_tags.extend(output.tags);
+          if let Some(tool_id) = output.suggested_tool_id.clone() {
+            candidate_scores.push(ToolScoreItem {
+              tool_id,
+              score: output.confidence * 100.0,
+            });
+          }
+
+          if output.confidence > best_confidence {
+            best_confidence = output.confidence;
+            if let Some(prep) = output.preprocessed_text {
+              selected_preprocessed = Some(PreprocessedResult {
+                formatted_text: Some(prep),
+                diff_source: None,
+                suggested_output_type: output
+                  .suggested_output_type
+                  .unwrap_or_else(|| "text".to_string()),
+              });
+            }
+            if let Some(tool_id) = output.suggested_tool_id {
+              recommended_tool_id = tool_id;
+            }
+            detected_format = sniffer.id().replace("-sniffer", "");
+          }
+        }
+      }
+    }
+
+    // 2. 检查固定规则是否已命中 (置信度 >= 0.80 说明已判定)
+    let fixed_rule_matched = best_confidence >= 0.80;
+
+    // 3. 处理文本嗅探器 TextSniffer
+    if matches!(input, SniffInput::Text(_)) {
+      if fixed_rule_matched {
+        // 固定规则已判定，TextSniffer 仅做常规语言分析补充，不覆盖高置信度推荐
+        let text_sniffer = builtin::text::TextSniffer::default();
+        let output = text_sniffer.sniff(input);
+        if output.matched {
+          combined_tags.extend(output.tags);
+        }
+      } else {
+        // 固定规则无法判定时，尝试调用判定模型 (jev-latest)
+        let (eval_config, tool_descriptions) = if let Some(st) = storage {
+          if let Ok(conn) = st.db.lock() {
+            let cfg = crate::storage::config::get_evaluation_config(&conn);
+            let tools = crate::storage::config::get_enabled_tool_descriptions(&conn);
+            (Some(cfg), tools)
+          } else {
+            (None, Vec::new())
+          }
+        } else {
+          (None, Vec::new())
+        };
+
+        let text_sniffer = builtin::text::TextSniffer::default();
+        let output = text_sniffer
+          .sniff_async(input, eval_config.as_ref(), &tool_descriptions)
+          .await;
+
+        if output.matched {
+          combined_tags.extend(output.tags.clone());
+
+          // 若存在 Jev 的概率分布，注入 candidate_scores
+          if let Some(prob_val) = output.metadata.get("choiceProbabilities") {
+            if let Some(map) = prob_val.as_object() {
+              for (tid, prob) in map {
+                if let Some(score_f) = prob.as_f64() {
+                  candidate_scores.push(ToolScoreItem {
+                    tool_id: tid.clone(),
+                    score: (score_f * 100.0) as f32,
+                  });
+                }
+              }
+            }
+          } else if let Some(tool_id) = output.suggested_tool_id.clone() {
+            candidate_scores.push(ToolScoreItem {
+              tool_id,
+              score: output.confidence * 100.0,
+            });
+          }
+
+          if output.confidence > best_confidence {
+            if let Some(tool_id) = output.suggested_tool_id {
+              recommended_tool_id = tool_id;
+            }
+            if output.tags.contains(&"jev-choice".to_string()) {
+              detected_format = "jev-choice".to_string();
+            } else {
+              detected_format = "text".to_string();
+            }
           }
         }
       }

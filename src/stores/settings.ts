@@ -1,62 +1,68 @@
-import { defineStore } from 'pinia';
-import { ref } from 'vue';
-import type { SystemSettings, ImageCacheStats, LLMProvider } from '@/types';
-import { tauriApi } from '@/lib/tauri';
+import { defineStore } from "pinia";
+import { ref } from "vue";
+import { fetch } from "@tauri-apps/plugin-http";
+import type { SystemSettings, ImageCacheStats, LLMProvider, EvaluationModelConfig } from "@/types";
+import { tauriApi } from "@/lib/tauri";
 
 const DEFAULT_SETTINGS: SystemSettings = {
-  theme: 'system',
+  theme: "system",
   autoCopyResult: false,
   closeWindowOnCopy: false,
-  defaultProviderId: 'openai',
+  defaultProviderId: "openai",
   providers: [
     {
-      id: 'openai',
-      name: 'OpenAI',
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      defaultModel: 'gpt-4o',
+      id: "openai",
+      name: "OpenAI",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "",
+      defaultModel: "gpt-4o",
     },
     {
-      id: 'anthropic',
-      name: 'Anthropic (Compatible)',
-      baseUrl: 'https://api.anthropic.com/v1',
-      apiKey: '',
-      defaultModel: 'claude-3-5-sonnet-20241022',
+      id: "anthropic",
+      name: "Anthropic (Compatible)",
+      baseUrl: "https://api.anthropic.com/v1",
+      apiKey: "",
+      defaultModel: "claude-3-5-sonnet-20241022",
     },
     {
-      id: 'deepseek',
-      name: 'DeepSeek',
-      baseUrl: 'https://api.deepseek.com/v1',
-      apiKey: '',
-      defaultModel: 'deepseek-chat',
+      id: "deepseek",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com/v1",
+      apiKey: "",
+      defaultModel: "deepseek-chat",
     },
     {
-      id: 'ollama',
-      name: 'Ollama (Local)',
-      baseUrl: 'http://localhost:11434/v1',
-      apiKey: 'ollama',
-      defaultModel: 'llama3.2-vision',
+      id: "ollama",
+      name: "Ollama (Local)",
+      baseUrl: "http://localhost:11434/v1",
+      apiKey: "ollama",
+      defaultModel: "llama3.2-vision",
     },
   ],
+  evaluationModel: {
+    baseUrl: "https://api.typesafe.ai/v1/systemone",
+    apiKey: "",
+    model: "jev-latest",
+  },
 };
 
-export const useSettingsStore = defineStore('settings', () => {
+export const useSettingsStore = defineStore("settings", () => {
   const settings = ref<SystemSettings>(DEFAULT_SETTINGS);
   const isLoading = ref<boolean>(false);
   const imageCacheStats = ref<ImageCacheStats | null>(null);
 
-  function applyTheme(theme: 'light' | 'dark' | 'system') {
+  function applyTheme(theme: "light" | "dark" | "system") {
     const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else if (theme === 'light') {
-      root.classList.remove('dark');
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else if (theme === "light") {
+      root.classList.remove("dark");
     } else {
-      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isSystemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
       if (isSystemDark) {
-        root.classList.add('dark');
+        root.classList.add("dark");
       } else {
-        root.classList.remove('dark');
+        root.classList.remove("dark");
       }
     }
   }
@@ -70,11 +76,22 @@ export const useSettingsStore = defineStore('settings', () => {
           ...DEFAULT_SETTINGS,
           ...saved,
           providers: saved.providers?.length ? saved.providers : DEFAULT_SETTINGS.providers,
+          evaluationModel: {
+            baseUrl:
+              saved.evaluationModel?.baseUrl ??
+              DEFAULT_SETTINGS.evaluationModel?.baseUrl ??
+              "https://api.typesafe.ai/v1/systemone",
+            apiKey: saved.evaluationModel?.apiKey ?? DEFAULT_SETTINGS.evaluationModel?.apiKey ?? "",
+            model:
+              saved.evaluationModel?.model ??
+              DEFAULT_SETTINGS.evaluationModel?.model ??
+              "jev-latest",
+          },
         };
       }
       applyTheme(settings.value.theme);
     } catch (err) {
-      console.warn('Failed to load settings, using defaults:', err);
+      console.warn("Failed to load settings, using defaults:", err);
       applyTheme(settings.value.theme);
     } finally {
       isLoading.value = false;
@@ -92,7 +109,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       await tauriApi.saveSystemSettings(settings.value);
     } catch (err) {
-      console.error('Failed to save settings:', err);
+      console.error("Failed to save settings:", err);
     }
   }
 
@@ -104,7 +121,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function removeProvider(providerId: string) {
     settings.value.providers = settings.value.providers.filter((p) => p.id !== providerId);
     if (settings.value.defaultProviderId === providerId) {
-      settings.value.defaultProviderId = settings.value.providers[0]?.id || '';
+      settings.value.defaultProviderId = settings.value.providers[0]?.id || "";
     }
     await updateSettings({
       providers: settings.value.providers,
@@ -113,14 +130,14 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function testProviderConnection(
-    provider: LLMProvider
+    provider: LLMProvider,
   ): Promise<{ success: boolean; latencyMs?: number; message: string }> {
     let url = provider.baseUrl.trim();
-    if (url.endsWith('/')) {
+    if (url.endsWith("/")) {
       url = url.slice(0, -1);
     }
     // Test endpoint: /models
-    const testUrl = url.endsWith('/models') ? url : `${url}/models`;
+    const testUrl = url.endsWith("/models") ? url : `${url}/models`;
     const startTime = Date.now();
 
     try {
@@ -128,14 +145,14 @@ export const useSettingsStore = defineStore('settings', () => {
       const timeoutId = setTimeout(() => controller.abort(), 6000);
 
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       };
       if (provider.apiKey) {
-        headers['Authorization'] = `Bearer ${provider.apiKey}`;
+        headers["Authorization"] = `Bearer ${provider.apiKey}`;
       }
 
       const res = await fetch(testUrl, {
-        method: 'GET',
+        method: "GET",
         headers,
         signal: controller.signal,
       });
@@ -168,11 +185,91 @@ export const useSettingsStore = defineStore('settings', () => {
       };
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
-      if (err.name === 'AbortError') {
+      if (err.name === "AbortError") {
         return {
           success: false,
           latencyMs,
-          message: '连接超时 (超过 6 秒未响应)',
+          message: "连接超时 (超过 6 秒未响应)",
+        };
+      }
+      return {
+        success: false,
+        latencyMs,
+        message: `连接失败: ${err?.message || err}`,
+      };
+    }
+  }
+
+  async function testEvaluationModelConnection(
+    config: EvaluationModelConfig,
+  ): Promise<{ success: boolean; latencyMs?: number; message: string }> {
+    let url = (config.baseUrl || "").trim();
+    while (url.endsWith("/")) {
+      url = url.slice(0, -1);
+    }
+    if (!url.endsWith("/systemone")) {
+      url = `${url}/systemone`;
+    }
+    const startTime = Date.now();
+
+    if (!config.apiKey?.trim()) {
+      return {
+        success: false,
+        message: "未配置 API Key",
+      };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          state: "test connection",
+          model: config.model?.trim() || "jev-latest",
+          questions: {
+            ping: {
+              type: "choice",
+              instructions: "Choose a or b",
+              criteria: {
+                a: "Option A",
+                b: "Option B",
+              },
+            },
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const latencyMs = Date.now() - startTime;
+
+      if (res.ok) {
+        return {
+          success: true,
+          latencyMs,
+          message: `连接成功 (延迟: ${latencyMs}ms)`,
+        };
+      }
+
+      const errText = await res.text();
+      return {
+        success: false,
+        latencyMs,
+        message: `HTTP ${res.status}: ${errText.slice(0, 100)}`,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      if (err.name === "AbortError") {
+        return {
+          success: false,
+          latencyMs,
+          message: "连接超时 (超过 6 秒未响应)",
         };
       }
       return {
@@ -189,7 +286,7 @@ export const useSettingsStore = defineStore('settings', () => {
       imageCacheStats.value = stats;
       return stats;
     } catch (err) {
-      console.error('Failed to fetch image cache stats:', err);
+      console.error("Failed to fetch image cache stats:", err);
       return null;
     }
   }
@@ -200,7 +297,7 @@ export const useSettingsStore = defineStore('settings', () => {
       await fetchCacheStats();
       return freed;
     } catch (err) {
-      console.error('Failed to clean image cache:', err);
+      console.error("Failed to clean image cache:", err);
       return 0;
     }
   }
@@ -218,6 +315,7 @@ export const useSettingsStore = defineStore('settings', () => {
     addProvider,
     removeProvider,
     testProviderConnection,
+    testEvaluationModelConnection,
     fetchCacheStats,
     cleanupCache,
   };
