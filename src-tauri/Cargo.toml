@@ -34,8 +34,11 @@ tokio = { version = "1", features = ["process", "time", "sync", "macros", "rt-mu
 regex = "1.10"
 dirs = "5.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
-mouse-keyboard-input = "0.9.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+
+[target.x86_64-unknown-linux-gnu.dependencies]
+mouse-keyboard-input = "0.9.1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
