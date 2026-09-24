@@ -813,3 +813,94 @@ async fn test_scenario_15_jev_choice_evaluation_routing() {
 
   let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[tokio::test]
+async fn test_scenario_16_jev_low_confidence_fallback() {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_addr = listener.local_addr().unwrap();
+
+  tokio::spawn(async move {
+    if let Ok((mut socket, _)) = listener.accept().await {
+      let mut buf = [0u8; 4096];
+      let _ = socket.read(&mut buf).await.unwrap();
+
+      // Return low confidence (0.60 <= 0.70)
+      let response_body = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+          "tool_choice": {
+            "type": "choice",
+            "choice": "calculator",
+            "probabilities": {
+              "calculator": 0.60,
+              "llm-translate": 0.25,
+              "json-formatter": 0.15
+            },
+            "confidence": 0.60
+          }
+        },
+        "usage": { "input_tokens": 120, "output_tokens": 25 }
+      })
+      .to_string();
+
+      let http_res = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        response_body.len(),
+        response_body
+      );
+      socket.write_all(http_res.as_bytes()).await.unwrap();
+    }
+  });
+
+  let temp_dir = std::env::temp_dir().join(format!("mtools_test_16_{}", uuid::Uuid::new_v4()));
+  let storage = AppStorage::init(temp_dir.clone()).unwrap();
+
+  {
+    let conn = storage.db.lock().unwrap();
+    let settings = serde_json::json!({
+      "evaluationModel": {
+        "baseUrl": format!("http://{}", local_addr),
+        "apiKey": "mock-api-key",
+        "model": "jev-latest"
+      }
+    });
+    mtools_lib::storage::config::save_system_config(&conn, &settings).unwrap();
+  }
+
+  let registry = SnifferRegistry::new();
+  let ambiguous_text = "这是一段普通的文本内容";
+  let sniff_input = SniffInput::Text(ambiguous_text);
+
+  let enriched = registry
+    .execute_async(
+      &sniff_input,
+      ambiguous_text.to_string(),
+      ambiguous_text.to_string(),
+      Vec::new(),
+      None,
+      Some(&storage),
+    )
+    .await;
+
+  // Since Jev confidence (0.60) is <= 0.70, it must NOT select calculator, but fall back to llm-translate
+  assert_eq!(
+    enriched.recommended_tool_id, "llm-translate",
+    "Low confidence Jev should not recommend calculator, must fallback to llm-translate"
+  );
+  assert!(
+    !enriched.tags.contains(&"jev-choice".to_string()),
+    "Tags should NOT contain jev-choice when confidence is <= 0.7"
+  );
+  // Probabilities should still be available in candidate scores
+  assert!(
+    enriched
+      .candidate_tool_scores
+      .iter()
+      .any(|s| s.tool_id == "calculator"),
+    "Candidate scores should still record probabilities from Jev"
+  );
+
+  let _ = std::fs::remove_dir_all(&temp_dir);
+}

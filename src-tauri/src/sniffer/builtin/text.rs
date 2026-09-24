@@ -1,6 +1,7 @@
 use super::jev::JevSniffer;
 use crate::models::EvaluationModelConfig;
 use crate::sniffer::{ContentSniffer, SniffInput, SniffOutput};
+use log::{info, warn};
 
 #[derive(Default)]
 pub struct TextSniffer;
@@ -32,33 +33,42 @@ impl TextSniffer {
         let jev = JevSniffer::new();
         match jev.evaluate(text, config, tools).await {
           Ok(result) => {
-            let tags = vec![
-              "format-text".to_string(),
-              "natural-language".to_string(),
-              "jev-choice".to_string(),
-            ];
             let prob_val = serde_json::to_value(&result.probabilities).unwrap_or_default();
             metadata.insert("choiceProbabilities".to_string(), prob_val);
 
-            // Jev 判定结果赋予较高置信度 (>= 0.85)，以进入相应工具
-            let confidence = if result.confidence > 0.0 {
-              result.confidence.max(0.85)
-            } else {
-              0.85
-            };
+            // 仅在 Jev 返回有效选择时 (confidence > 0.7) 才推荐该工具
+            if let Some(chosen_tool) = result.choice {
+              let tags = vec![
+                "format-text".to_string(),
+                "natural-language".to_string(),
+                "jev-choice".to_string(),
+              ];
 
-            return SniffOutput {
-              matched: true,
-              confidence,
-              tags,
-              preprocessed_text: None,
-              suggested_tool_id: Some(result.choice),
-              suggested_output_type: Some("markdown".to_string()),
-              metadata,
-            };
+              // Jev 判定结果赋予较高置信度 (>= 0.85)，以进入相应工具
+              let confidence = if result.confidence > 0.0 {
+                result.confidence.max(0.85)
+              } else {
+                0.85
+              };
+
+              return SniffOutput {
+                matched: true,
+                confidence,
+                tags,
+                preprocessed_text: None,
+                suggested_tool_id: Some(chosen_tool),
+                suggested_output_type: Some("markdown".to_string()),
+                metadata,
+              };
+            } else {
+              info!(
+                "[TextSniffer] Jev confidence ({:.2}) <= threshold, treating as no tool selected",
+                result.confidence
+              );
+            }
           }
           Err(err) => {
-            eprintln!(
+            warn!(
               "[TextSniffer] Jev evaluation failed, falling back to default: {}",
               err
             );

@@ -1,4 +1,5 @@
 use crate::models::EvaluationModelConfig;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -36,11 +37,20 @@ pub struct ChoiceResponse {
   pub answers: HashMap<String, ChoiceAnswer>,
 }
 
+/// 判定模型选择工具的最低置信度阈值 (高于此阈值才认为有效选中工具)
+pub const MIN_CONFIDENCE_THRESHOLD: f32 = 0.7;
+
 #[derive(Debug, Clone)]
 pub struct JevChoiceResult {
-  pub choice: String,
+  pub choice: Option<String>,
   pub confidence: f32,
   pub probabilities: HashMap<String, f32>,
+}
+
+impl JevChoiceResult {
+  pub fn is_selected(&self) -> bool {
+    self.choice.is_some()
+  }
 }
 
 pub struct JevSniffer {
@@ -115,6 +125,8 @@ impl JevSniffer {
       questions,
     };
 
+    info!("jev request: {:?}", serde_json::to_string(&request_body));
+
     let endpoint = Self::resolve_endpoint(&config.base_url);
 
     let response = self
@@ -154,9 +166,35 @@ impl JevSniffer {
       ));
     }
 
+    // 确定模型置信度：优先使用 answer.confidence，若未提供或为 0 则尝试从 probabilities 中获取所选工具的概率
+    let confidence = if answer.confidence > 0.0 {
+      answer.confidence
+    } else {
+      answer
+        .probabilities
+        .get(&answer.choice)
+        .copied()
+        .unwrap_or(0.0)
+    };
+
+    // 仅在置信度高于阈值 (如 > 0.7) 时才认为有效选中了相应工具，否则视为未能选择出
+    let choice = if confidence > MIN_CONFIDENCE_THRESHOLD {
+      info!(
+        "[Jev] Tool '{}' selected with sufficient confidence {:.2} (> {:.2})",
+        answer.choice, confidence, MIN_CONFIDENCE_THRESHOLD
+      );
+      Some(answer.choice.clone())
+    } else {
+      info!(
+        "[Jev] Confidence {:.2} <= {:.2}, considered as no tool selected (candidate was '{}')",
+        confidence, MIN_CONFIDENCE_THRESHOLD, answer.choice
+      );
+      None
+    };
+
     Ok(JevChoiceResult {
-      choice: answer.choice.clone(),
-      confidence: answer.confidence,
+      choice,
+      confidence,
       probabilities: answer.probabilities.clone(),
     })
   }
@@ -242,5 +280,53 @@ mod tests {
     assert_eq!(ans.choice, "calculator");
     assert_eq!(ans.confidence, 0.89);
     assert_eq!(ans.probabilities.get("calculator").copied(), Some(0.92));
+  }
+
+  #[test]
+  fn test_confidence_threshold_selection() {
+    // 1. High confidence (> 0.7) should select the tool
+    let conf_high = 0.85;
+    let choice_high = if conf_high > MIN_CONFIDENCE_THRESHOLD {
+      Some("calculator".to_string())
+    } else {
+      None
+    };
+    let res_high = JevChoiceResult {
+      choice: choice_high,
+      confidence: conf_high,
+      probabilities: HashMap::new(),
+    };
+    assert!(res_high.is_selected());
+    assert_eq!(res_high.choice, Some("calculator".to_string()));
+
+    // 2. Low confidence (<= 0.7) should NOT select the tool
+    let conf_low = 0.65;
+    let choice_low = if conf_low > MIN_CONFIDENCE_THRESHOLD {
+      Some("calculator".to_string())
+    } else {
+      None
+    };
+    let res_low = JevChoiceResult {
+      choice: choice_low,
+      confidence: conf_low,
+      probabilities: HashMap::new(),
+    };
+    assert!(!res_low.is_selected());
+    assert_eq!(res_low.choice, None);
+
+    // 3. Exactly at threshold (0.7) should NOT select the tool
+    let conf_exact = 0.70;
+    let choice_exact = if conf_exact > MIN_CONFIDENCE_THRESHOLD {
+      Some("calculator".to_string())
+    } else {
+      None
+    };
+    let res_exact = JevChoiceResult {
+      choice: choice_exact,
+      confidence: conf_exact,
+      probabilities: HashMap::new(),
+    };
+    assert!(!res_exact.is_selected());
+    assert_eq!(res_exact.choice, None);
   }
 }

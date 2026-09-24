@@ -12,6 +12,7 @@
     "clipboard-manager:allow-write-html",
     "clipboard-manager:allow-write-image",
     "clipboard-manager:allow-write-text",
+    "log:default",
     "http:default",
     {
       "identifier": "http:default",

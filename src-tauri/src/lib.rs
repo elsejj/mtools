@@ -123,6 +123,19 @@ pub async fn process_clipboard_internal(app: &tauri::AppHandle) -> Result<Enrich
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(
+      tauri_plugin_log::Builder::new()
+        .target(tauri_plugin_log::Target::new(
+          tauri_plugin_log::TargetKind::Stdout,
+        ))
+        .target(tauri_plugin_log::Target::new(
+          tauri_plugin_log::TargetKind::LogDir { file_name: None },
+        ))
+        .target(tauri_plugin_log::Target::new(
+          tauri_plugin_log::TargetKind::Webview,
+        ))
+        .build(),
+    )
     .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {

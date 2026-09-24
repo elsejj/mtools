@@ -3,7 +3,27 @@ pub mod builtin;
 use crate::models::{
   EnrichedPayload, PayloadType, PreprocessedResult, TextMetadata, ToolScoreItem,
 };
+use log::{debug, info, trace};
 use serde_json::json;
+
+fn format_sniff_input(input: &SniffInput) -> String {
+  match input {
+    SniffInput::Text(t) => {
+      let trimmed = t.trim();
+      let char_count = trimmed.chars().count();
+      let preview: String = trimmed.chars().take(80).collect();
+      let preview_clean = preview.replace('\n', "\\n");
+      if char_count <= 80 {
+        format!("Text ({} chars): \"{}\"", char_count, preview_clean)
+      } else {
+        format!("Text ({} chars): \"{}...\"", char_count, preview_clean)
+      }
+    }
+    SniffInput::Image(bytes) => {
+      format!("Image ({} bytes)", bytes.len())
+    }
+  }
+}
 
 /// 嗅探输入源抽象
 pub enum SniffInput<'a> {
@@ -56,6 +76,12 @@ impl SnifferRegistry {
 
   /// 注册新的嗅探器，并根据 priority 降序排列
   pub fn register(&mut self, sniffer: Box<dyn ContentSniffer>) {
+    debug!(
+      "[SnifferRegistry] Registering sniffer '{}' (name: '{}', priority: {})",
+      sniffer.id(),
+      sniffer.name(),
+      sniffer.priority()
+    );
     self.sniffers.push(sniffer);
     self
       .sniffers
@@ -71,6 +97,7 @@ impl SnifferRegistry {
     decoding_trace: Vec<String>,
     image_local_cache_path: Option<String>,
   ) -> EnrichedPayload {
+    let input_desc = format_sniff_input(input);
     let mut combined_tags = Vec::new();
     let mut best_confidence = 0.0f32;
     let mut selected_preprocessed = None;
@@ -81,10 +108,27 @@ impl SnifferRegistry {
     let mut candidate_scores = Vec::new();
     let mut detected_format = "plain".to_string();
 
+    info!(
+      "[Sniffer] >>> Starting sync sniffing pipeline for {} | default fallback tool: '{}'",
+      input_desc, recommended_tool_id
+    );
+
     for sniffer in &self.sniffers {
       if sniffer.supports(input) {
+        debug!(
+          "[Sniffer] Evaluating sniffer '{}' (priority: {})...",
+          sniffer.id(),
+          sniffer.priority()
+        );
         let output = sniffer.sniff(input);
         if output.matched {
+          info!(
+            "[Sniffer] Sniffer '{}' MATCHED (confidence: {:.2}, suggested_tool: {:?}, tags: {:?})",
+            sniffer.id(),
+            output.confidence,
+            output.suggested_tool_id,
+            output.tags
+          );
           combined_tags.extend(output.tags);
           if let Some(tool_id) = output.suggested_tool_id.clone() {
             candidate_scores.push(ToolScoreItem {
@@ -94,6 +138,14 @@ impl SnifferRegistry {
           }
 
           if output.confidence > best_confidence {
+            info!(
+              "[Sniffer] -> Updating candidate tool: '{}' -> '{:?}' (confidence: {:.2} > previous {:.2}, detected format: '{}')",
+              recommended_tool_id,
+              output.suggested_tool_id,
+              output.confidence,
+              best_confidence,
+              sniffer.id().replace("-sniffer", "")
+            );
             best_confidence = output.confidence;
             if let Some(prep) = output.preprocessed_text {
               selected_preprocessed = Some(PreprocessedResult {
@@ -108,16 +160,41 @@ impl SnifferRegistry {
               recommended_tool_id = tool_id;
             }
             detected_format = sniffer.id().replace("-sniffer", "");
+          } else {
+            debug!(
+              "[Sniffer] -> Sniffer '{}' matched with confidence {:.2} <= current best {:.2}, keeping '{}'",
+              sniffer.id(),
+              output.confidence,
+              best_confidence,
+              recommended_tool_id
+            );
           }
+        } else {
+          trace!("[Sniffer] Sniffer '{}' did not match", sniffer.id());
         }
+      } else {
+        trace!("[Sniffer] Sniffer '{}' does not support input", sniffer.id());
       }
     }
 
     if !decoding_trace.is_empty() {
+      info!("[Sniffer] Appending decoding trace tags: {:?}", decoding_trace);
       for trace in &decoding_trace {
         combined_tags.push(format!("decoded-from-{}", trace));
       }
     }
+
+    info!(
+      "[Sniffer] <<< Sync sniffing complete: SELECTED TOOL='{}' | format='{}' | confidence={:.2} | candidates={:?} | tags={:?}",
+      recommended_tool_id,
+      detected_format,
+      best_confidence,
+      candidate_scores
+        .iter()
+        .map(|s| format!("{}:{:.1}", s.tool_id, s.score))
+        .collect::<Vec<_>>(),
+      combined_tags
+    );
 
     let now = chrono::Utc::now().timestamp_millis();
     let id = uuid::Uuid::new_v4().to_string();
@@ -189,6 +266,7 @@ impl SnifferRegistry {
     image_local_cache_path: Option<String>,
     storage: Option<&crate::storage::AppStorage>,
   ) -> EnrichedPayload {
+    let input_desc = format_sniff_input(input);
     let mut combined_tags = Vec::new();
     let mut best_confidence = 0.0f32;
     let mut selected_preprocessed = None;
@@ -199,14 +277,32 @@ impl SnifferRegistry {
     let mut candidate_scores = Vec::new();
     let mut detected_format = "plain".to_string();
 
+    info!(
+      "[Sniffer] >>> Starting async sniffing pipeline for {} | default fallback tool: '{}'",
+      input_desc, recommended_tool_id
+    );
+
     // 1. 运行固定规则嗅探器 (非 text-sniffer)
+    debug!("[Sniffer] Stage 1: Running fixed-rule sniffers...");
     for sniffer in &self.sniffers {
       if sniffer.id() == "text-sniffer" {
         continue;
       }
       if sniffer.supports(input) {
+        debug!(
+          "[Sniffer] Evaluating fixed-rule sniffer '{}' (priority: {})...",
+          sniffer.id(),
+          sniffer.priority()
+        );
         let output = sniffer.sniff(input);
         if output.matched {
+          info!(
+            "[Sniffer] Fixed-rule '{}' MATCHED (confidence: {:.2}, suggested_tool: {:?}, tags: {:?})",
+            sniffer.id(),
+            output.confidence,
+            output.suggested_tool_id,
+            output.tags
+          );
           combined_tags.extend(output.tags);
           if let Some(tool_id) = output.suggested_tool_id.clone() {
             candidate_scores.push(ToolScoreItem {
@@ -216,6 +312,14 @@ impl SnifferRegistry {
           }
 
           if output.confidence > best_confidence {
+            info!(
+              "[Sniffer] -> Updating candidate tool: '{}' -> '{:?}' (confidence: {:.2} > previous {:.2}, detected format: '{}')",
+              recommended_tool_id,
+              output.suggested_tool_id,
+              output.confidence,
+              best_confidence,
+              sniffer.id().replace("-sniffer", "")
+            );
             best_confidence = output.confidence;
             if let Some(prep) = output.preprocessed_text {
               selected_preprocessed = Some(PreprocessedResult {
@@ -230,25 +334,50 @@ impl SnifferRegistry {
               recommended_tool_id = tool_id;
             }
             detected_format = sniffer.id().replace("-sniffer", "");
+          } else {
+            debug!(
+              "[Sniffer] -> Fixed-rule '{}' matched with confidence {:.2} <= current best {:.2}, keeping '{}'",
+              sniffer.id(),
+              output.confidence,
+              best_confidence,
+              recommended_tool_id
+            );
           }
+        } else {
+          trace!("[Sniffer] Fixed-rule '{}' did not match", sniffer.id());
         }
+      } else {
+        trace!("[Sniffer] Fixed-rule '{}' does not support input", sniffer.id());
       }
     }
 
     // 2. 检查固定规则是否已命中 (置信度 >= 0.80 说明已判定)
     let fixed_rule_matched = best_confidence >= 0.80;
+    info!(
+      "[Sniffer] Stage 1 finished: fixed_rule_matched={}, best_confidence={:.2}, current tool='{}'",
+      fixed_rule_matched, best_confidence, recommended_tool_id
+    );
 
     // 3. 处理文本嗅探器 TextSniffer
     if matches!(input, SniffInput::Text(_)) {
       if fixed_rule_matched {
         // 固定规则已判定，TextSniffer 仅做常规语言分析补充，不覆盖高置信度推荐
+        info!(
+          "[Sniffer] Stage 2: Fixed rule hit confidence threshold (>= 0.80). Running TextSniffer only for auxiliary language tagging without overriding tool '{}'.",
+          recommended_tool_id
+        );
         let text_sniffer = builtin::text::TextSniffer::default();
         let output = text_sniffer.sniff(input);
         if output.matched {
+          debug!("[Sniffer] TextSniffer auxiliary tags: {:?}", output.tags);
           combined_tags.extend(output.tags);
         }
       } else {
         // 固定规则无法判定时，尝试调用判定模型 (jev-latest)
+        info!(
+          "[Sniffer] Stage 2: No fixed rule reached confidence threshold (best: {:.2} < 0.80). Invoking TextSniffer / AI evaluation model...",
+          best_confidence
+        );
         let (eval_config, tool_descriptions) = if let Some(st) = storage {
           if let Ok(conn) = st.db.lock() {
             let cfg = crate::storage::config::get_evaluation_config(&conn);
@@ -261,12 +390,23 @@ impl SnifferRegistry {
           (None, Vec::new())
         };
 
+        let is_eval_enabled = eval_config.as_ref().map(|c| c.is_enabled()).unwrap_or(false);
+        debug!(
+          "[Sniffer] AI model status: eval_model_enabled={}, candidate_tools_count={}",
+          is_eval_enabled,
+          tool_descriptions.len()
+        );
+
         let text_sniffer = builtin::text::TextSniffer::default();
         let output = text_sniffer
           .sniff_async(input, eval_config.as_ref(), &tool_descriptions)
           .await;
 
         if output.matched {
+          info!(
+            "[Sniffer] TextSniffer async returned: confidence={:.2}, suggested_tool={:?}, tags={:?}",
+            output.confidence, output.suggested_tool_id, output.tags
+          );
           combined_tags.extend(output.tags.clone());
 
           // 若存在 Jev 的概率分布，注入 candidate_scores
@@ -280,6 +420,13 @@ impl SnifferRegistry {
                   });
                 }
               }
+              info!(
+                "[Sniffer] AI model probability distribution injected: {:?}",
+                candidate_scores
+                  .iter()
+                  .map(|s| format!("{}:{:.1}", s.tool_id, s.score))
+                  .collect::<Vec<_>>()
+              );
             }
           } else if let Some(tool_id) = output.suggested_tool_id.clone() {
             candidate_scores.push(ToolScoreItem {
@@ -289,6 +436,10 @@ impl SnifferRegistry {
           }
 
           if output.confidence > best_confidence {
+            info!(
+              "[Sniffer] -> Updating candidate tool from TextSniffer/Model: '{}' -> '{:?}' (confidence: {:.2} > previous {:.2})",
+              recommended_tool_id, output.suggested_tool_id, output.confidence, best_confidence
+            );
             if let Some(tool_id) = output.suggested_tool_id {
               recommended_tool_id = tool_id;
             }
@@ -297,16 +448,37 @@ impl SnifferRegistry {
             } else {
               detected_format = "text".to_string();
             }
+            best_confidence = output.confidence;
+          } else {
+            debug!(
+              "[Sniffer] -> TextSniffer/Model confidence {:.2} <= current best {:.2}, keeping '{}'",
+              output.confidence, best_confidence, recommended_tool_id
+            );
           }
+        } else {
+          debug!("[Sniffer] TextSniffer did not match input");
         }
       }
     }
 
     if !decoding_trace.is_empty() {
+      info!("[Sniffer] Appending decoding trace tags: {:?}", decoding_trace);
       for trace in &decoding_trace {
         combined_tags.push(format!("decoded-from-{}", trace));
       }
     }
+
+    info!(
+      "[Sniffer] <<< Async sniffing complete: SELECTED TOOL='{}' | format='{}' | confidence={:.2} | candidates={:?} | tags={:?}",
+      recommended_tool_id,
+      detected_format,
+      best_confidence,
+      candidate_scores
+        .iter()
+        .map(|s| format!("{}:{:.1}", s.tool_id, s.score))
+        .collect::<Vec<_>>(),
+      combined_tags
+    );
 
     let now = chrono::Utc::now().timestamp_millis();
     let id = uuid::Uuid::new_v4().to_string();
